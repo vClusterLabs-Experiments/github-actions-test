@@ -1,0 +1,11 @@
+name: Clean GitHub Cache
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  clean-cache:
+    permissions:
+      actions: write
+    uses: loft-sh/github-actions/.github/workflows/clean-github-cache.yaml@main

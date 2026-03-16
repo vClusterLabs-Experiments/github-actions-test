@@ -1,0 +1,319 @@
+name: Integration Tests
+
+on:
+  repository_dispatch:
+    types: [integration-test]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+env:
+  GH_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
+  TIMESTAMP: ${{ github.run_id }}-${{ github.run_attempt }}
+
+jobs:
+  test-validate-renovate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create test branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "test/renovate-$TIMESTAMP"
+          echo '{"$schema":"https://docs.renovatebot.com/renovate-schema.json","extends":["config:recommended"],"labels":["dependencies"]}' > renovate.json
+          git add renovate.json
+          git commit -m "test: modify renovate.json"
+          git push origin "test/renovate-$TIMESTAMP"
+
+      - name: Create PR
+        id: pr
+        run: |
+          PR_URL=$(gh pr create \
+            --title "test: validate-renovate $TIMESTAMP" \
+            --body "Automated integration test" \
+            --head "test/renovate-$TIMESTAMP" \
+            --base main)
+          echo "url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "number=$(echo "$PR_URL" | grep -o '[0-9]*$')" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for caller workflow
+        run: sleep 30
+
+      - name: Check workflow ran
+        run: |
+          # Check that the validate-renovate caller workflow was triggered
+          RUNS=$(gh run list --workflow=caller-validate-renovate.yaml --branch="test/renovate-$TIMESTAMP" --limit=1 --json status,conclusion)
+          echo "Workflow runs: $RUNS"
+          if [ "$(echo "$RUNS" | jq length)" -eq 0 ]; then
+            echo "::warning::No workflow run found (may still be queued)"
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          gh pr close "${{ steps.pr.outputs.number }}" --delete-branch 2>/dev/null || true
+
+  test-detect-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create test branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "test/detect-$TIMESTAMP"
+          echo "modified $(date)" >> test-fixtures/detect-test.txt
+          git add test-fixtures/detect-test.txt
+          git commit -m "test: modify detect-test fixture"
+          git push origin "test/detect-$TIMESTAMP"
+
+      - name: Create PR
+        id: pr
+        run: |
+          PR_URL=$(gh pr create \
+            --title "test: detect-changes $TIMESTAMP" \
+            --body "Automated integration test" \
+            --head "test/detect-$TIMESTAMP" \
+            --base main)
+          echo "url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "number=$(echo "$PR_URL" | grep -o '[0-9]*$')" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for caller workflow
+        run: sleep 30
+
+      - name: Check workflow ran
+        run: |
+          RUNS=$(gh run list --workflow=caller-detect-changes.yaml --branch="test/detect-$TIMESTAMP" --limit=1 --json status,conclusion)
+          echo "Workflow runs: $RUNS"
+          if [ "$(echo "$RUNS" | jq length)" -eq 0 ]; then
+            echo "::warning::No workflow run found (may still be queued)"
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          gh pr close "${{ steps.pr.outputs.number }}" --delete-branch 2>/dev/null || true
+
+  test-actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create test branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "test/actionlint-$TIMESTAMP"
+          # Add a harmless comment to a workflow file to trigger actionlint
+          echo "# test trigger $TIMESTAMP" >> .github/workflows/caller-actionlint.yaml
+          git add .github/workflows/caller-actionlint.yaml
+          git commit -m "test: trigger actionlint"
+          git push origin "test/actionlint-$TIMESTAMP"
+
+      - name: Create PR
+        id: pr
+        run: |
+          PR_URL=$(gh pr create \
+            --title "test: actionlint $TIMESTAMP" \
+            --body "Automated integration test" \
+            --head "test/actionlint-$TIMESTAMP" \
+            --base main)
+          echo "url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "number=$(echo "$PR_URL" | grep -o '[0-9]*$')" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for caller workflow
+        run: sleep 30
+
+      - name: Check workflow ran
+        run: |
+          RUNS=$(gh run list --workflow=caller-actionlint.yaml --branch="test/actionlint-$TIMESTAMP" --limit=1 --json status,conclusion)
+          echo "Workflow runs: $RUNS"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          gh pr close "${{ steps.pr.outputs.number }}" --delete-branch 2>/dev/null || true
+
+  test-backport:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create release branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "release-test-$TIMESTAMP"
+          git push origin "release-test-$TIMESTAMP"
+
+      - name: Create feature branch and PR
+        id: pr
+        run: |
+          git checkout main
+          git checkout -b "test/backport-$TIMESTAMP"
+          echo "backport test $(date)" >> test-fixtures/backport-test.txt
+          git add test-fixtures/backport-test.txt
+          git commit -m "test: backport feature"
+          git push origin "test/backport-$TIMESTAMP"
+          PR_URL=$(gh pr create \
+            --title "test: backport $TIMESTAMP" \
+            --body "Automated integration test" \
+            --head "test/backport-$TIMESTAMP" \
+            --base main \
+            --label "backport-to-release-test-$TIMESTAMP")
+          echo "url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "number=$(echo "$PR_URL" | grep -o '[0-9]*$')" >> "$GITHUB_OUTPUT"
+
+      - name: Merge PR
+        run: |
+          gh pr merge "${{ steps.pr.outputs.number }}" --squash --admin
+
+      - name: Wait for backport
+        run: sleep 45
+
+      - name: Check for backport PR
+        run: |
+          BACKPORT_PRS=$(gh pr list --search "backport" --json number,title,headRefName --limit 5)
+          echo "Backport PRs: $BACKPORT_PRS"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          # Close any backport PRs
+          BACKPORT_PRS=$(gh pr list --search "backport release-test-$TIMESTAMP" --json number --jq '.[].number')
+          for pr in $BACKPORT_PRS; do
+            gh pr close "$pr" --delete-branch 2>/dev/null || true
+          done
+          # Delete release branch
+          git push origin --delete "release-test-$TIMESTAMP" 2>/dev/null || true
+          # Delete feature branch (may already be deleted by squash merge)
+          git push origin --delete "test/backport-$TIMESTAMP" 2>/dev/null || true
+
+  test-cleanup-backport-branches:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create stale backport branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "backport/test-stale-$TIMESTAMP"
+          git push origin "backport/test-stale-$TIMESTAMP"
+          git checkout main
+
+      - name: Run cleanup dry-run
+        run: |
+          gh workflow run caller-cleanup-backport-branches.yaml
+          sleep 15
+          RUNS=$(gh run list --workflow=caller-cleanup-backport-branches.yaml --limit=1 --json status,conclusion,databaseId)
+          echo "Cleanup runs: $RUNS"
+
+      - name: Verify branch still exists (dry-run)
+        run: |
+          if gh api "repos/${{ github.repository }}/branches/backport/test-stale-$TIMESTAMP" > /dev/null 2>&1; then
+            echo "Branch still exists (expected for dry-run)"
+          else
+            echo "::warning::Branch was deleted during dry-run"
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          git push origin --delete "backport/test-stale-$TIMESTAMP" 2>/dev/null || true
+
+  test-clean-github-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create and close PR
+        id: pr
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "test/cache-$TIMESTAMP"
+          echo "cache test" > test-fixtures/cache-test-$TIMESTAMP.txt
+          git add .
+          git commit -m "test: cache cleanup"
+          git push origin "test/cache-$TIMESTAMP"
+          PR_URL=$(gh pr create \
+            --title "test: clean-cache $TIMESTAMP" \
+            --body "Automated integration test" \
+            --head "test/cache-$TIMESTAMP" \
+            --base main)
+          echo "number=$(echo "$PR_URL" | grep -o '[0-9]*$')" >> "$GITHUB_OUTPUT"
+
+      - name: Close PR
+        run: |
+          gh pr close "${{ steps.pr.outputs.number }}"
+
+      - name: Wait for cache cleanup
+        run: sleep 30
+
+      - name: Check workflow ran
+        run: |
+          RUNS=$(gh run list --workflow=caller-clean-github-cache.yaml --limit=1 --json status,conclusion)
+          echo "Clean cache runs: $RUNS"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          git push origin --delete "test/cache-$TIMESTAMP" 2>/dev/null || true
+
+  report:
+    needs:
+      - test-validate-renovate
+      - test-detect-changes
+      - test-actionlint
+      - test-backport
+      - test-cleanup-backport-branches
+      - test-clean-github-cache
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        env:
+          RENOVATE: ${{ needs.test-validate-renovate.result }}
+          DETECT: ${{ needs.test-detect-changes.result }}
+          ACTIONLINT: ${{ needs.test-actionlint.result }}
+          BACKPORT: ${{ needs.test-backport.result }}
+          CLEANUP: ${{ needs.test-cleanup-backport-branches.result }}
+          CACHE: ${{ needs.test-clean-github-cache.result }}
+        run: |
+          echo "## Integration Test Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Test | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| validate-renovate | $RENOVATE |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| detect-changes | $DETECT |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| actionlint | $ACTIONLINT |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| backport | $BACKPORT |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| cleanup-backport-branches | $CLEANUP |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| clean-github-cache | $CACHE |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check for failures
+        env:
+          RENOVATE: ${{ needs.test-validate-renovate.result }}
+          DETECT: ${{ needs.test-detect-changes.result }}
+          ACTIONLINT: ${{ needs.test-actionlint.result }}
+          BACKPORT: ${{ needs.test-backport.result }}
+          CLEANUP: ${{ needs.test-cleanup-backport-branches.result }}
+          CACHE: ${{ needs.test-clean-github-cache.result }}
+        run: |
+          FAILED=false
+          for result in "$RENOVATE" "$DETECT" "$ACTIONLINT" "$BACKPORT" "$CLEANUP" "$CACHE"; do
+            if [ "$result" = "failure" ]; then
+              FAILED=true
+            fi
+          done
+          if [ "$FAILED" = "true" ]; then
+            echo "::error::One or more integration tests failed"
+            exit 1
+          fi

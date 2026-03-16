@@ -1,0 +1,11 @@
+name: Backport
+
+on:
+  pull_request:
+    types: [closed, labeled]
+
+jobs:
+  backport:
+    uses: loft-sh/github-actions/.github/workflows/backport.yaml@main
+    secrets:
+      gh-access-token: ${{ secrets.GH_ACCESS_TOKEN }}

@@ -1,0 +1,11 @@
+name: Actionlint
+
+on:
+  pull_request:
+
+jobs:
+  actionlint:
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: loft-sh/github-actions/.github/workflows/actionlint.yaml@main

@@ -1,0 +1,11 @@
+name: Validate Renovate Config
+
+on:
+  pull_request:
+
+jobs:
+  validate-renovate:
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: loft-sh/github-actions/.github/workflows/validate-renovate.yaml@main

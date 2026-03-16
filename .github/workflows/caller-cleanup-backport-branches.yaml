@@ -1,0 +1,12 @@
+name: Cleanup Backport Branches
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    uses: loft-sh/github-actions/.github/workflows/cleanup-backport-branches.yaml@main
+    with:
+      dry-run: 'true'
+    secrets:
+      gh-access-token: ${{ secrets.GH_ACCESS_TOKEN }}

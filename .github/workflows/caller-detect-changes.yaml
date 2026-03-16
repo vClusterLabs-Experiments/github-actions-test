@@ -1,0 +1,12 @@
+name: Detect Changes
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  detect:
+    uses: loft-sh/github-actions/.github/workflows/detect-changes.yaml@main
+    with:
+      paths: "- 'test-fixtures/**'"

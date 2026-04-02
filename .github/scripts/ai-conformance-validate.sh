@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Validates a PRODUCT.yaml against the upstream cncf/k8s-ai-conformance validator.
+# Usage: ai-conformance-validate.sh <k8s_version> <submission_dir> <product_yaml_path>
+# Writes validation output to ./output/validation-output.txt
+
+set -euo pipefail
+
+K8S_VERSION="${1:?Usage: ai-conformance-validate.sh <k8s_version> <submission_dir> <product_yaml>}"
+SUBMISSION_DIR="${2:?Missing submission_dir}"
+PRODUCT_YAML="${3:?Missing product_yaml path}"
+
+# Strip 'v' prefix if present
+K8S_VER="${K8S_VERSION#v}"
+
+echo "Validating PRODUCT.yaml for v${K8S_VER}/${SUBMISSION_DIR}"
+
+# Clone upstream validator
+git clone --depth=1 https://github.com/cncf/k8s-ai-conformance.git /tmp/k8s-ai-conformance
+
+# Place PRODUCT.yaml in the expected directory structure
+mkdir -p "/tmp/k8s-ai-conformance/v${K8S_VER}/${SUBMISSION_DIR}"
+cp "${PRODUCT_YAML}" "/tmp/k8s-ai-conformance/v${K8S_VER}/${SUBMISSION_DIR}/PRODUCT.yaml"
+
+# Run upstream validator
+cd /tmp/k8s-ai-conformance
+go run scripts/validate.go "v${K8S_VER}/${SUBMISSION_DIR}/PRODUCT.yaml" 2>&1 | tee "${GITHUB_WORKSPACE}/output/validation-output.txt"

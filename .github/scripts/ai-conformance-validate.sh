@@ -12,15 +12,17 @@ PRODUCT_YAML="${3:?Missing product_yaml path}"
 # Strip 'v' prefix if present
 K8S_VER="${K8S_VERSION#v}"
 
+VALIDATOR_DIR="/tmp/k8s-ai-conformance-validator-$$"
+
 echo "Validating PRODUCT.yaml for v${K8S_VER}/${SUBMISSION_DIR}"
 
-# Clone upstream validator
-git clone --depth=1 https://github.com/cncf/k8s-ai-conformance.git /tmp/k8s-ai-conformance
+# Clone upstream validator to a unique directory
+git clone --depth=1 https://github.com/cncf/k8s-ai-conformance.git "${VALIDATOR_DIR}"
 
 # Place PRODUCT.yaml in the expected directory structure
-mkdir -p "/tmp/k8s-ai-conformance/v${K8S_VER}/${SUBMISSION_DIR}"
-cp "${PRODUCT_YAML}" "/tmp/k8s-ai-conformance/v${K8S_VER}/${SUBMISSION_DIR}/PRODUCT.yaml"
+mkdir -p "${VALIDATOR_DIR}/v${K8S_VER}/${SUBMISSION_DIR}"
+cp "${PRODUCT_YAML}" "${VALIDATOR_DIR}/v${K8S_VER}/${SUBMISSION_DIR}/PRODUCT.yaml"
 
 # Run upstream validator
-cd /tmp/k8s-ai-conformance
+cd "${VALIDATOR_DIR}"
 go run scripts/validate.go "v${K8S_VER}/${SUBMISSION_DIR}/PRODUCT.yaml" 2>&1 | tee "${GITHUB_WORKSPACE}/output/validation-output.txt"

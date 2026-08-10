@@ -21,6 +21,7 @@ This repo contains caller workflows that exercise each reusable workflow from
 | `caller-backport.yaml` | `backport.yaml` |
 | `caller-clean-github-cache.yaml` | `clean-github-cache.yaml` |
 | `caller-cleanup-backport-branches.yaml` | `cleanup-backport-branches.yaml` |
+| `caller-cve-scan.yaml` | `cve-scan` composite action (manual only, spends Snyk quota) |
 
 ## Integration test orchestrator
 
@@ -32,3 +33,4 @@ branches, and GitHub events to exercise each workflow end-to-end.
 | Secret | Purpose |
 |--------|---------|
 | `GH_ACCESS_TOKEN` | PAT with `repo` scope for creating PRs, merging, deleting branches |
+| `SNYK_TOKEN` | Snyk API token for `caller-cve-scan.yaml`. Without it the scan exits as a setup error. |

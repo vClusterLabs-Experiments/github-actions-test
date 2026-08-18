@@ -40,6 +40,8 @@ jobs:
   work:
     name: Work
     runs-on: ubuntu-latest
+    outputs:
+      check-conclusion: ${{ steps.conclusion.outputs.check-conclusion }}
     steps:
       # Long enough to comment again and watch the supersede, or cancel the run
       # and watch the check still close.
@@ -55,6 +57,28 @@ jobs:
               exit 1
               ;;
           esac
+
+      # Stands in for the ginkgo-conclusion action. It matters that this exists
+      # at all: the action's outcome matrix has no success arm, so job results
+      # alone can only ever produce failure or cancelled. A report conclusion is
+      # the only path to a green check, which is what e2e.yaml supplies from the
+      # Ginkgo report and what this caller was missing.
+      #
+      # if: always() so a failed suite still declares itself, exactly as the real
+      # one does; a cancelled run declares nothing and falls through to the
+      # cancelled arm.
+      - name: Derive the conclusion
+        id: conclusion
+        if: ${{ always() && !cancelled() }}
+        env:
+          FILTER: ${{ inputs.filter }}
+        run: |
+          case "${FILTER}" in
+            *fail*)    conclusion=failure ;;
+            *nothing*) conclusion=neutral ;;
+            *)         conclusion=success ;;
+          esac
+          echo "check-conclusion=${conclusion}" >> "$GITHUB_OUTPUT"
 
   finish:
     name: Publish command result
@@ -73,6 +97,7 @@ jobs:
         with:
           mode: finish
           check-run-id: ${{ inputs.check-run-id }}
+          report-conclusion: ${{ needs.work.outputs.check-conclusion }}
           suite-result: ${{ needs.work.result }}
           summary: |
             Integration check for the comment-triggered-check action.

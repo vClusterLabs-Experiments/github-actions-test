@@ -1,0 +1,84 @@
+name: Comment-triggered check (work)
+
+# The non-privileged half of the integration check. Dispatched on the pull
+# request's head branch by caller-comment-triggered-check.yaml, it stands in for
+# a real test suite and completes the check-run that was opened for it.
+#
+# A `workflow_dispatch` on a branch is not a privileged trigger, so this runs
+# under the same trust model as a same-repo pull_request run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: "Whatever followed /test. Containing the word 'fail' makes the work fail, to exercise the fail-closed conclusion."
+        required: false
+        default: ""
+        type: string
+      concurrency-key:
+        description: "Slug plus digest of the filter, from the action. Scopes cancellation to the same command."
+        required: false
+        default: ""
+        type: string
+      check-run-id:
+        description: "Check-run to complete when this run finishes. Empty means there is no external check to report to."
+        required: false
+        default: ""
+        type: string
+
+permissions: {}
+
+concurrency:
+  # Keyed by the filter, not the branch. A second `/test snapshots` supersedes
+  # the first, while `/test istio` alongside it runs on its own. The digest in
+  # the key matters: the slug alone drops punctuation, so `a && b` and `a || b`
+  # would share a group and cancel each other.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.concurrency-key }}
+  cancel-in-progress: true
+
+jobs:
+  work:
+    name: Work
+    runs-on: ubuntu-latest
+    steps:
+      # Long enough to comment again and watch the supersede, or cancel the run
+      # and watch the check still close.
+      - name: Stand in for the suite
+        env:
+          FILTER: ${{ inputs.filter }}
+        run: |
+          echo "filter: ${FILTER}"
+          sleep 90
+          case "${FILTER}" in
+            *fail*)
+              echo "::error::asked to fail"
+              exit 1
+              ;;
+          esac
+
+  finish:
+    name: Publish command result
+    needs: [work]
+    # always(), not !cancelled(). A superseded or cancelled run must still close
+    # the check-run it was given, or the pull request keeps a check that spins
+    # forever.
+    if: ${{ always() && inputs.check-run-id != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+
+    steps:
+      - name: Complete the check-run
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@425c1569184abdc803b64bd758a92eced9cf60d5
+        with:
+          mode: finish
+          check-run-id: ${{ inputs.check-run-id }}
+          suite-result: ${{ needs.work.result }}
+          summary: |
+            Integration check for the comment-triggered-check action.
+
+            | | |
+            | --- | --- |
+            | filter | `${{ inputs.filter }}` |
+            | work | `${{ needs.work.result }}` |
+          details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

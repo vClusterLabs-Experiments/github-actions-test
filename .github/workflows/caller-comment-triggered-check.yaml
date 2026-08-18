@@ -1,0 +1,131 @@
+name: Comment-triggered check (command)
+
+# Integration check for the comment-triggered-check action. `/test <anything>`
+# on a pull request here opens a check-run on the pull request's head commit,
+# dispatches the work to the head branch, and the dispatched run closes it.
+#
+# This repository exists because `issue_comment` only ever fires from the copy
+# of a workflow on the default branch, so the command cannot be exercised from
+# the pull request that introduces it. It mirrors vcluster-pro's
+# e2e-command.yaml, with a sleep standing in for the e2e suite.
+#
+# TODO: pin to comment-triggered-check/v1 once loft-sh/github-actions#226 is
+# merged and tagged. The SHA is the pull request head so the two can be
+# exercised together.
+
+on:
+  issue_comment:
+    types: [created]
+
+# Nothing repository-wide. This is a privileged trigger: it runs from the
+# default branch with a write token on every comment in the repository, so each
+# job takes only what it needs.
+permissions: {}
+
+jobs:
+  prepare:
+    name: Parse command
+    # Cheap pre-filter. Most comments are not commands, and the action checks
+    # properly; this only avoids spinning a runner to find that out.
+    if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, '/test') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: read
+    outputs:
+      should-run: ${{ steps.cmd.outputs.should-run }}
+      reason: ${{ steps.cmd.outputs.reason }}
+      matched: ${{ steps.cmd.outputs.matched }}
+      filter: ${{ steps.cmd.outputs.filter }}
+      head-ref: ${{ steps.cmd.outputs.head-ref }}
+      head-sha: ${{ steps.cmd.outputs.head-sha }}
+      key: ${{ steps.cmd.outputs.concurrency-key }}
+      check-run-id: ${{ steps.cmd.outputs.check-run-id }}
+
+    steps:
+      # Deliberately checks out nothing. A privileged trigger that checked out
+      # the pull request and then called a local action would resolve the action
+      # DEFINITION from the pull request and run it with this token.
+      - name: Parse the command
+        id: cmd
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@425c1569184abdc803b64bd758a92eced9cf60d5
+        with:
+          mode: start
+          comment-body: ${{ github.event.comment.body }}
+          comment-author: ${{ github.event.comment.user.login }}
+          author-association: ${{ github.event.comment.author_association }}
+          pr-number: ${{ github.event.issue.number }}
+          check-name-prefix: integration
+          run-id: ${{ github.run_id }}
+          server-url: ${{ github.server_url }}
+
+      # There is no pull request comment on a refusal here, unlike vcluster-pro.
+      # The outputs are the thing under test, so print them and let the job log
+      # be the record.
+      - name: Report the decision
+        env:
+          MATCHED: ${{ steps.cmd.outputs.matched }}
+          SHOULD_RUN: ${{ steps.cmd.outputs.should-run }}
+          REASON: ${{ steps.cmd.outputs.reason }}
+          FILTER: ${{ steps.cmd.outputs.filter }}
+          HEAD_SHA: ${{ steps.cmd.outputs.head-sha }}
+          HEAD_REF: ${{ steps.cmd.outputs.head-ref }}
+          BASE_REF: ${{ steps.cmd.outputs.base-ref }}
+          KEY: ${{ steps.cmd.outputs.concurrency-key }}
+          CHECK_NAME: ${{ steps.cmd.outputs.check-name }}
+          CHECK_RUN_ID: ${{ steps.cmd.outputs.check-run-id }}
+        run: |
+          {
+            echo "| Output | Value |"
+            echo "| --- | --- |"
+            echo "| matched | \`${MATCHED}\` |"
+            echo "| should-run | \`${SHOULD_RUN}\` |"
+            echo "| reason | \`${REASON}\` |"
+            echo "| filter | \`${FILTER}\` |"
+            echo "| head-sha | \`${HEAD_SHA}\` |"
+            echo "| head-ref | \`${HEAD_REF}\` |"
+            echo "| base-ref | \`${BASE_REF}\` |"
+            echo "| concurrency-key | \`${KEY}\` |"
+            echo "| check-name | \`${CHECK_NAME}\` |"
+            echo "| check-run-id | \`${CHECK_RUN_ID}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # The privileged half ends here. The work runs in a separate, non-privileged
+  # run on the head branch, which is the trust model a pull_request gate already
+  # has.
+  dispatch:
+    name: Dispatch the work
+    needs: [prepare]
+    if: ${{ needs.prepare.outputs.should-run == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      checks: write
+
+    steps:
+      - name: Run the work on the head branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ needs.prepare.outputs.head-ref }}
+          FILTER: ${{ needs.prepare.outputs.filter }}
+          KEY: ${{ needs.prepare.outputs.key }}
+          CHECK_RUN_ID: ${{ needs.prepare.outputs.check-run-id }}
+        run: |
+          gh workflow run caller-comment-triggered-check-work.yaml \
+            --ref "$HEAD_REF" \
+            -f "filter=$FILTER" \
+            -f "concurrency-key=$KEY" \
+            -f "check-run-id=$CHECK_RUN_ID"
+
+      # The dispatched run owns the check-run from here. If the dispatch never
+      # landed, nothing else will ever close it, so this job does.
+      - name: Close the check-run if the dispatch failed
+        if: failure()
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@425c1569184abdc803b64bd758a92eced9cf60d5
+        with:
+          mode: finish
+          check-run-id: ${{ needs.prepare.outputs.check-run-id }}
+          suite-result: failure
+          summary: "Could not start the work. See the run log for details."
+          details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

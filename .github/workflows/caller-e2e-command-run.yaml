@@ -1,0 +1,91 @@
+name: E2E command run
+
+# The wrapper the command dispatches. It runs no test logic of its own: it calls
+# caller-e2e.yaml, exactly as the gate does, so nothing is duplicated.
+#
+# Its whole reason to exist is the check names. Dispatching caller-e2e.yaml
+# directly would publish `Suite / E2E Tests` a second time on the same commit,
+# colliding with the gate's rows, and the checks UI renders the latest run per
+# workflow. Going through a wrapper renames every check it produces.
+
+on:
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: "Whatever followed /test."
+        required: false
+        default: ""
+        type: string
+      concurrency-key:
+        description: "Slug plus digest of the filter, from the action."
+        required: false
+        default: ""
+        type: string
+      check-run-id:
+        description: "Check-run to complete when this run finishes."
+        required: false
+        default: ""
+        type: string
+
+permissions: {}
+
+concurrency:
+  # Keyed by the filter, so a second `/test snapshots` supersedes the first
+  # while `/test istio` runs alongside it.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.concurrency-key }}
+  cancel-in-progress: true
+
+jobs:
+  # Named from the filter, so two commands are distinguishable in the list and
+  # neither reads as the gate. This is the job whose name is prefixed onto every
+  # check the called workflow publishes.
+  e2e:
+    name: ${{ inputs.filter }}
+    uses: ./.github/workflows/caller-e2e.yaml
+    with:
+      filter: ${{ inputs.filter }}
+
+  finish:
+    name: Publish command result
+    needs: [e2e]
+    # always(), so a superseded or cancelled run still closes the check-run it
+    # was given rather than leaving it spinning.
+    if: ${{ always() && inputs.check-run-id != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+
+    steps:
+      # Stands in for ginkgo-conclusion. The action's outcome matrix has no
+      # success arm, so job results alone can only produce failure or cancelled;
+      # a report conclusion is the only path to a green check.
+      - name: Derive the conclusion
+        id: conclusion
+        if: ${{ !cancelled() }}
+        env:
+          FILTER: ${{ inputs.filter }}
+          RESULT: ${{ needs.e2e.result }}
+        run: |
+          if [[ "${RESULT}" != "success" ]]; then
+            conclusion=failure
+          else
+            case "${FILTER}" in
+              *nothing*) conclusion=neutral ;;
+              *)         conclusion=success ;;
+            esac
+          fi
+          echo "check-conclusion=${conclusion}" >> "$GITHUB_OUTPUT"
+
+      - name: Complete the check-run
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@71cc543f854592f91bccbaa1dc2db938eadb33e9
+        with:
+          mode: finish
+          check-run-id: ${{ inputs.check-run-id }}
+          report-conclusion: ${{ steps.conclusion.outputs.check-conclusion }}
+          suite-result: ${{ needs.e2e.result }}
+          summary: |
+            `/test ${{ inputs.filter }}` ran through the command wrapper.
+
+            The native checks for this run are named `${{ inputs.filter }} / Suite / E2E Tests`,
+            so they cannot supersede the gate's `Suite / E2E Tests` on the same commit.
+          details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

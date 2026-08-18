@@ -115,7 +115,7 @@ jobs:
           KEY: ${{ needs.prepare.outputs.key }}
           CHECK_RUN_ID: ${{ needs.prepare.outputs.check-run-id }}
         run: |
-          gh workflow run caller-comment-triggered-check-work.yaml \
+          gh workflow run caller-e2e-command-run.yaml \
             --ref "$HEAD_REF" \
             -f "filter=$FILTER" \
             -f "concurrency-key=$KEY" \

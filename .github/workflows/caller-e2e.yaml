@@ -1,0 +1,38 @@
+name: E2E
+
+# Stands in for e2e.yaml: the pull_request gate, which also exposes
+# workflow_call so the command wrapper can reuse it rather than duplicate it.
+#
+# The point under test is what the checks are called. Called from the gate's own
+# pull_request trigger the suite publishes `Suite / E2E Tests`. Called from
+# caller-e2e-command-run.yaml it publishes `<filter> / Suite / E2E Tests`,
+# because a called workflow's checks are named after the calling job and belong
+# to the calling workflow. If that holds, a command run can never supersede the
+# gate's rows on the same commit.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/caller-e2e*.yaml"
+  workflow_call:
+    inputs:
+      filter:
+        description: "Label filter. Empty on the gate, where the mandatory suite is implied."
+        required: false
+        default: ""
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    name: Suite
+    uses: ./.github/workflows/caller-e2e-suite.yaml
+    with:
+      # The gate has no inputs context, so this is the mandatory suite there and
+      # the author's filter when called by the command.
+      filter: ${{ inputs.filter || 'pr' }}

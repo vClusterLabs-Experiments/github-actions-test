@@ -107,6 +107,9 @@ jobs:
       - name: Run the work on the head branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This job checks out nothing, so gh has no git remote to infer the
+          # repository from and fails before it reaches the API.
+          GH_REPO: ${{ github.repository }}
           HEAD_REF: ${{ needs.prepare.outputs.head-ref }}
           FILTER: ${{ needs.prepare.outputs.filter }}
           KEY: ${{ needs.prepare.outputs.key }}

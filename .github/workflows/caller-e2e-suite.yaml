@@ -24,4 +24,16 @@ jobs:
           FILTER: ${{ inputs.filter }}
         run: |
           echo "would run: ${FILTER}"
+          # Short enough to iterate on, long enough to comment again and watch
+          # one command supersede another, or cancel a run and watch its
+          # check-run still close.
           sleep 45
+          # Magic words, so every conclusion is reachable by hand: `fail` gives a
+          # red check, `nothing` gives the empty-selection neutral, anything else
+          # passes. The real suite gets this verdict from the Ginkgo report.
+          case "${FILTER}" in
+            *fail*)
+              echo "::error::asked to fail"
+              exit 1
+              ;;
+          esac

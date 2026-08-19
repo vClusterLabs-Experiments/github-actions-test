@@ -25,7 +25,13 @@ on:
 permissions: {}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # The filter has to be in the group. Inside a called workflow `github.workflow`
+  # is the TOP-LEVEL workflow name and a dispatch carries no pull request number,
+  # so without it every command run on a branch shares one group and `/test
+  # snapshots || istio` cancels a running `/test snapshots`, whatever group the
+  # wrapper declared. Empty on the gate, where the pull request number separates
+  # the groups already.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.filter }}
   cancel-in-progress: true
 
 jobs:
@@ -36,3 +42,5 @@ jobs:
       # The gate has no inputs context, so this is the mandatory suite there and
       # the author's filter when called by the command.
       filter: ${{ inputs.filter || 'pr' }}
+
+# Touched so the gate runs on this pull request, for the naming comparison.

@@ -36,3 +36,5 @@ jobs:
       # The gate has no inputs context, so this is the mandatory suite there and
       # the author's filter when called by the command.
       filter: ${{ inputs.filter || 'pr' }}
+
+# Touched so the gate runs on this pull request, for the naming comparison.

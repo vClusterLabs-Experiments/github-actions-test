@@ -1,0 +1,27 @@
+name: E2E suite (leaf)
+
+# Stands in for e2e-suite.yaml. A leaf reusable workflow: it declares no
+# concurrency of its own and exists only to be called.
+
+on:
+  workflow_call:
+    inputs:
+      filter:
+        description: "Label filter the suite would run."
+        required: false
+        default: "pr"
+        type: string
+
+permissions: {}
+
+jobs:
+  suite:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Stand in for the suite
+        env:
+          FILTER: ${{ inputs.filter }}
+        run: |
+          echo "would run: ${FILTER}"
+          sleep 45

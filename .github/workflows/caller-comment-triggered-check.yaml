@@ -27,7 +27,11 @@ jobs:
     name: Parse command
     # Cheap pre-filter. Most comments are not commands, and the action checks
     # properly; this only avoids spinning a runner to find that out.
-    if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, '/test') }}
+    #
+    # `contains` rather than `startsWith`: the action trims the first line before
+    # matching and expressions have no trim, so a comment beginning with a space
+    # was dropped here silently, with no check and no refusal to explain it.
+    if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, '/test') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

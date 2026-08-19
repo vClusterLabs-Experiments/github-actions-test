@@ -66,6 +66,16 @@ jobs:
           FILTER: ${{ inputs.filter }}
           RESULT: ${{ needs.e2e.result }}
         run: |
+          # A cancelled suite declares nothing, so the action's own cancelled arm
+          # decides. Mapping it to failure here reported a red check for a run
+          # somebody superseded on purpose, which is exactly the mis-mapping
+          # resolve_conclusion warns about. `!cancelled()` on this step is not
+          # enough: it is false when only the nested job was cancelled.
+          if [[ "${RESULT}" == "cancelled" ]]; then
+            echo "suite was cancelled; leaving the conclusion to the action"
+            exit 0
+          fi
+
           if [[ "${RESULT}" != "success" ]]; then
             conclusion=failure
           else

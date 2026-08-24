@@ -58,6 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       check-conclusion: ${{ steps.conclusion.outputs.check-conclusion }}
+      check-summary: ${{ steps.conclusion.outputs.check-summary }}
     permissions: {}
 
     steps:
@@ -104,6 +105,14 @@ jobs:
           elif [[ "${FILTER}" == *nothing* ]]; then
             echo "::warning::the label filter matched no specs; reporting ${empty_conclusion}"
             conclusion="${empty_conclusion}"
+            {
+              echo "check-summary<<CHECK_SUMMARY_EOF"
+              echo "Nothing ran: the label filter matched no specs."
+              echo
+              echo "An unknown label is not an error in Ginkgo, it just matches nothing, so check the"
+              echo "filter for a typo."
+              echo "CHECK_SUMMARY_EOF"
+            } >> "$GITHUB_OUTPUT"
           else
             conclusion=success
           fi
@@ -128,8 +137,5 @@ jobs:
           check-run-id: ${{ inputs.check-run-id }}
           report-conclusion: ${{ needs.suite.outputs.check-conclusion }}
           suite-result: ${{ needs.suite.result }}
-          summary: |
-            Pro tree, filter `${{ inputs.ginkgo-label }}`.
-
-            [View the run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          summary: ${{ needs.suite.outputs.check-summary }}
           details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

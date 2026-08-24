@@ -196,6 +196,9 @@ jobs:
         if: always()
         uses: loft-sh/github-actions/.github/actions/sticky-pr-comment@ee112eee4fb449b7b1e78f63fdec314563be534d # sticky-pr-comment/v1
         with:
+          # Required here. The input defaults to github.event.pull_request.number,
+          # which is empty on issue_comment, and the action then refuses.
+          pr-number: ${{ github.event.issue.number }}
           marker: '<!-- e2e-command-status -->'
           body: |
             ### `/test-e2e` is running `${{ needs.prepare.outputs.filter }}`

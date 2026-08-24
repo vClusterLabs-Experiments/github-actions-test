@@ -1,14 +1,16 @@
 name: E2E
 
-# Stands in for e2e.yaml: the pull_request gate, which also exposes
-# workflow_call so the command wrapper can reuse it rather than duplicate it.
+# Stands in for e2e.yaml: the pull_request gate.
 #
-# The point under test is what the checks are called. Called from the gate's own
-# pull_request trigger the suite publishes `Suite / E2E Tests`. Called from
-# caller-e2e-command-run.yaml it publishes `<filter> / Suite / E2E Tests`,
-# because a called workflow's checks are named after the calling job and belong
-# to the calling workflow. If that holds, a command run can never supersede the
-# gate's rows on the same commit.
+# It is now only the gate. The command used to dispatch a wrapper that called
+# this workflow, to keep command checks from colliding with the gate's rows; that
+# turned out to be unnecessary, because the checks UI never renders check suites
+# from workflow_dispatch runs at all. The command dispatches
+# caller-e2e-{pro,oss}-run.yaml directly and reports through API-created
+# check-runs instead.
+#
+# Its path filter matches those two, so a change to either still re-runs the gate
+# here and the two kinds of check can be observed on one commit.
 
 on:
   pull_request:

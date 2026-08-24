@@ -53,7 +53,7 @@ jobs:
       # DEFINITION from the pull request and run it with this token.
       - name: Parse the command
         id: cmd
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@71cc543f854592f91bccbaa1dc2db938eadb33e9
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@8784f60835f687ec36d82e5f6bcc976d504611cc
         with:
           mode: start
           comment-body: ${{ github.event.comment.body }}
@@ -129,7 +129,7 @@ jobs:
       # landed, nothing else will ever close it, so this job does.
       - name: Close the check-run if the dispatch failed
         if: failure()
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@71cc543f854592f91bccbaa1dc2db938eadb33e9
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@8784f60835f687ec36d82e5f6bcc976d504611cc
         with:
           mode: finish
           check-run-id: ${{ needs.prepare.outputs.check-run-id }}

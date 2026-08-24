@@ -82,7 +82,10 @@ jobs:
           echo "oss filter: ${FILTER}"
           echo "compose-with-pr: ${COMPOSE_WITH_PR}"
           # Long enough to observe a supersede, short enough to iterate.
-          sleep 30
+          case "${FILTER}" in
+            *slow*) sleep 240 ;;
+            *)      sleep 30 ;;
+          esac
           case "${FILTER}" in
             *oss-fail*) echo "::error::injected oss failure"; exit 1 ;;
           esac

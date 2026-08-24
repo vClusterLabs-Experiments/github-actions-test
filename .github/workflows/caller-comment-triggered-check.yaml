@@ -61,7 +61,7 @@ jobs:
       # DEFINITION from the pull request and run it with this token.
       - name: Parse the command and open the pro check
         id: pro
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@8784f60835f687ec36d82e5f6bcc976d504611cc
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@ad06f4c17696c472e98f266a4c011737b186399d
         with:
           mode: start
           command: /test-e2e
@@ -76,7 +76,7 @@ jobs:
       - name: Open the oss check
         id: oss
         if: ${{ steps.pro.outputs.should-run == 'true' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@8784f60835f687ec36d82e5f6bcc976d504611cc
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@ad06f4c17696c472e98f266a4c011737b186399d
         with:
           mode: start
           command: /test-e2e
@@ -93,7 +93,7 @@ jobs:
       # this the pro check sits in progress forever.
       - name: Close whatever was opened if preparing failed
         if: failure()
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@8784f60835f687ec36d82e5f6bcc976d504611cc
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@ad06f4c17696c472e98f266a4c011737b186399d
         with:
           mode: finish
           check-run-id: ${{ steps.pro.outputs.check-run-id }}
@@ -237,7 +237,7 @@ jobs:
 
       - name: Close the pro check if its dispatch failed
         if: ${{ steps.dispatch-pro.outcome == 'failure' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@8784f60835f687ec36d82e5f6bcc976d504611cc
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@ad06f4c17696c472e98f266a4c011737b186399d
         with:
           mode: finish
           check-run-id: ${{ needs.prepare.outputs.pro-check-run-id }}
@@ -247,7 +247,7 @@ jobs:
 
       - name: Close the oss check if its dispatch failed
         if: ${{ steps.dispatch-oss.outcome == 'failure' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@8784f60835f687ec36d82e5f6bcc976d504611cc
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@ad06f4c17696c472e98f266a4c011737b186399d
         with:
           mode: finish
           check-run-id: ${{ needs.prepare.outputs.oss-check-run-id }}

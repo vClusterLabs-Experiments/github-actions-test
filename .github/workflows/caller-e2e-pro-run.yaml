@@ -142,3 +142,5 @@ jobs:
           suite-result: ${{ needs.suite.result }}
           summary: ${{ needs.suite.outputs.check-summary }}
           details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+# normal-path probe

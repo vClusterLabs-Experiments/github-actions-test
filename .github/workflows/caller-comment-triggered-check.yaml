@@ -1,13 +1,22 @@
 name: Comment-triggered check (command)
 
-# Integration check for the comment-triggered-check action. `/test <anything>`
-# on a pull request here opens a check-run on the pull request's head commit,
-# dispatches the work to the head branch, and the dispatched run closes it.
+# Integration check for the comment-triggered-check action, mirroring
+# vcluster-pro's e2e-command.yaml with sleeps standing in for the suites.
 #
-# This repository exists because `issue_comment` only ever fires from the copy
-# of a workflow on the default branch, so the command cannot be exercised from
-# the pull request that introduces it. It mirrors vcluster-pro's
-# e2e-command.yaml, with a sleep standing in for the e2e suite.
+# `/test-e2e <filter>` opens TWO check-runs on the pull request's head commit,
+# one per tree, and dispatches both to the head branch. Two checks from one
+# comment is the thing under test here: the action opens one check-run per start
+# call, so it is called twice, and each dispatched run closes its own.
+#
+# This repository exists because `issue_comment` only ever fires from the copy of
+# a workflow on the DEFAULT BRANCH, so the command cannot be exercised from the
+# pull request that introduces it. Every change here has to reach main before it
+# does anything.
+#
+# Outcomes are injected through the filter text; see caller-e2e-pro-run.yaml.
+#   /test-e2e ok           both green
+#   /test-e2e oss-fail     pro green, oss red
+#   /test-e2e nothing      both red, NOT grey
 #
 # TODO: pin to comment-triggered-check/v1 once loft-sh/github-actions#226 is
 # merged and tagged. The SHA is the pull request head so the two can be
@@ -26,59 +35,88 @@ jobs:
   prepare:
     name: Parse command
     # Cheap pre-filter. Most comments are not commands, and the action checks
-    # properly; this only avoids spinning a runner to find that out.
-    #
-    # `contains` rather than `startsWith`: the action trims the first line before
-    # matching and expressions have no trim, so a comment beginning with a space
-    # was dropped here silently, with no check and no refusal to explain it.
-    if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, '/test') }}
+    # properly; this only avoids spinning a runner to find that out. `contains`
+    # rather than `startsWith`, because the action trims the first line before
+    # matching and expressions have no trim.
+    if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, '/test-e2e') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       checks: write
-      pull-requests: read
+      pull-requests: write
     outputs:
-      should-run: ${{ steps.cmd.outputs.should-run }}
-      reason: ${{ steps.cmd.outputs.reason }}
-      matched: ${{ steps.cmd.outputs.matched }}
-      filter: ${{ steps.cmd.outputs.filter }}
-      head-ref: ${{ steps.cmd.outputs.head-ref }}
-      head-sha: ${{ steps.cmd.outputs.head-sha }}
-      key: ${{ steps.cmd.outputs.concurrency-key }}
-      check-run-id: ${{ steps.cmd.outputs.check-run-id }}
+      should-run: ${{ steps.pro.outputs.should-run }}
+      reason: ${{ steps.pro.outputs.reason }}
+      matched: ${{ steps.pro.outputs.matched }}
+      filter: ${{ steps.pro.outputs.filter }}
+      head-ref: ${{ steps.pro.outputs.head-ref }}
+      head-sha: ${{ steps.pro.outputs.head-sha }}
+      key: ${{ steps.pro.outputs.concurrency-key }}
+      pro-check-run-id: ${{ steps.pro.outputs.check-run-id }}
+      oss-check-run-id: ${{ steps.oss.outputs.check-run-id }}
 
     steps:
       # Deliberately checks out nothing. A privileged trigger that checked out
       # the pull request and then called a local action would resolve the action
       # DEFINITION from the pull request and run it with this token.
-      - name: Parse the command
-        id: cmd
+      - name: Parse the command and open the pro check
+        id: pro
         uses: loft-sh/github-actions/.github/actions/comment-triggered-check@8784f60835f687ec36d82e5f6bcc976d504611cc
         with:
           mode: start
+          command: /test-e2e
+          check-name-prefix: e2e-pro
           comment-body: ${{ github.event.comment.body }}
           comment-author: ${{ github.event.comment.user.login }}
           author-association: ${{ github.event.comment.author_association }}
           pr-number: ${{ github.event.issue.number }}
-          check-name-prefix: integration
           run-id: ${{ github.run_id }}
           server-url: ${{ github.server_url }}
 
-      # There is no pull request comment on a refusal here, unlike vcluster-pro.
+      - name: Open the oss check
+        id: oss
+        if: ${{ steps.pro.outputs.should-run == 'true' }}
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@8784f60835f687ec36d82e5f6bcc976d504611cc
+        with:
+          mode: start
+          command: /test-e2e
+          check-name-prefix: e2e-oss
+          comment-body: ${{ github.event.comment.body }}
+          comment-author: ${{ github.event.comment.user.login }}
+          author-association: ${{ github.event.comment.author_association }}
+          pr-number: ${{ github.event.issue.number }}
+          run-id: ${{ github.run_id }}
+          server-url: ${{ github.server_url }}
+
+      # Two creates mean the first can succeed and the second fail, and a failed
+      # prepare skips the dispatch job that would otherwise close things. Without
+      # this the pro check sits in progress forever.
+      - name: Close whatever was opened if preparing failed
+        if: failure()
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@8784f60835f687ec36d82e5f6bcc976d504611cc
+        with:
+          mode: finish
+          check-run-id: ${{ steps.pro.outputs.check-run-id }}
+          suite-result: failure
+          summary: "Could not open both checks for this command. See the run log for details."
+          details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
       # The outputs are the thing under test, so print them and let the job log
-      # be the record.
+      # be the record. Both ids, because two distinct check-runs is the claim.
       - name: Report the decision
+        if: always()
         env:
-          MATCHED: ${{ steps.cmd.outputs.matched }}
-          SHOULD_RUN: ${{ steps.cmd.outputs.should-run }}
-          REASON: ${{ steps.cmd.outputs.reason }}
-          FILTER: ${{ steps.cmd.outputs.filter }}
-          HEAD_SHA: ${{ steps.cmd.outputs.head-sha }}
-          HEAD_REF: ${{ steps.cmd.outputs.head-ref }}
-          BASE_REF: ${{ steps.cmd.outputs.base-ref }}
-          KEY: ${{ steps.cmd.outputs.concurrency-key }}
-          CHECK_NAME: ${{ steps.cmd.outputs.check-name }}
-          CHECK_RUN_ID: ${{ steps.cmd.outputs.check-run-id }}
+          MATCHED: ${{ steps.pro.outputs.matched }}
+          SHOULD_RUN: ${{ steps.pro.outputs.should-run }}
+          REASON: ${{ steps.pro.outputs.reason }}
+          FILTER: ${{ steps.pro.outputs.filter }}
+          HEAD_SHA: ${{ steps.pro.outputs.head-sha }}
+          HEAD_REF: ${{ steps.pro.outputs.head-ref }}
+          KEY: ${{ steps.pro.outputs.concurrency-key }}
+          PRO_CHECK_NAME: ${{ steps.pro.outputs.check-name }}
+          PRO_CHECK_RUN_ID: ${{ steps.pro.outputs.check-run-id }}
+          OSS_CHECK_NAME: ${{ steps.oss.outputs.check-name }}
+          OSS_CHECK_RUN_ID: ${{ steps.oss.outputs.check-run-id }}
         run: |
           {
             echo "| Output | Value |"
@@ -89,50 +127,113 @@ jobs:
             echo "| filter | \`${FILTER}\` |"
             echo "| head-sha | \`${HEAD_SHA}\` |"
             echo "| head-ref | \`${HEAD_REF}\` |"
-            echo "| base-ref | \`${BASE_REF}\` |"
             echo "| concurrency-key | \`${KEY}\` |"
-            echo "| check-name | \`${CHECK_NAME}\` |"
-            echo "| check-run-id | \`${CHECK_RUN_ID}\` |"
+            echo "| pro check-name | \`${PRO_CHECK_NAME}\` |"
+            echo "| pro check-run-id | \`${PRO_CHECK_RUN_ID}\` |"
+            echo "| oss check-name | \`${OSS_CHECK_NAME}\` |"
+            echo "| oss check-run-id | \`${OSS_CHECK_RUN_ID}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # The privileged half ends here. The work runs in a separate, non-privileged
-  # run on the head branch, which is the trust model a pull_request gate already
-  # has.
+          if [[ "${SHOULD_RUN}" == "true" && "${PRO_CHECK_RUN_ID}" == "${OSS_CHECK_RUN_ID}" ]]; then
+            echo "::error::both starts returned the same check-run id; they must be distinct"
+            exit 1
+          fi
+
+  # The privileged half ends here. The work runs in separate, non-privileged runs
+  # on the head branch, which is the trust model a pull_request gate already has.
   dispatch:
-    name: Dispatch the work
+    name: Dispatch the suites
     needs: [prepare]
     if: ${{ needs.prepare.outputs.should-run == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       actions: write
       checks: write
+      pull-requests: write
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # This job checks out nothing, so gh has no git remote to infer the
+      # repository from and fails before it reaches the API.
+      GH_REPO: ${{ github.repository }}
+      HEAD_REF: ${{ needs.prepare.outputs.head-ref }}
+      HEAD_SHA: ${{ needs.prepare.outputs.head-sha }}
+      FILTER: ${{ needs.prepare.outputs.filter }}
+      KEY: ${{ needs.prepare.outputs.key }}
 
     steps:
-      - name: Run the work on the head branch
+      # Both dispatches are attempted even if the first fails, so one broken tree
+      # never silently costs the other its run.
+      - name: Run the pro suite on the head branch
+        id: dispatch-pro
+        continue-on-error: true
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # This job checks out nothing, so gh has no git remote to infer the
-          # repository from and fails before it reaches the API.
-          GH_REPO: ${{ github.repository }}
-          HEAD_REF: ${{ needs.prepare.outputs.head-ref }}
-          FILTER: ${{ needs.prepare.outputs.filter }}
-          KEY: ${{ needs.prepare.outputs.key }}
-          CHECK_RUN_ID: ${{ needs.prepare.outputs.check-run-id }}
+          CHECK_RUN_ID: ${{ needs.prepare.outputs.pro-check-run-id }}
         run: |
-          gh workflow run caller-e2e-command-run.yaml \
+          gh workflow run caller-e2e-pro-run.yaml \
             --ref "$HEAD_REF" \
-            -f "filter=$FILTER" \
+            -f "ginkgo-label=$FILTER" \
+            -f "head-sha=$HEAD_SHA" \
+            -f "compose-with-pr=false" \
             -f "concurrency-key=$KEY" \
             -f "check-run-id=$CHECK_RUN_ID"
 
-      # The dispatched run owns the check-run from here. If the dispatch never
-      # landed, nothing else will ever close it, so this job does.
-      - name: Close the check-run if the dispatch failed
-        if: failure()
+      - name: Run the oss suite on the head branch
+        id: dispatch-oss
+        continue-on-error: true
+        env:
+          CHECK_RUN_ID: ${{ needs.prepare.outputs.oss-check-run-id }}
+        run: |
+          gh workflow run caller-e2e-oss-run.yaml \
+            --ref "$HEAD_REF" \
+            -f "ginkgo-label=$FILTER" \
+            -f "head-sha=$HEAD_SHA" \
+            -f "compose-with-pr=false" \
+            -f "concurrency-key=$KEY" \
+            -f "check-run-id=$CHECK_RUN_ID"
+
+      - name: Say what it picked
+        if: always()
+        uses: loft-sh/github-actions/.github/actions/sticky-pr-comment@ee112eee4fb449b7b1e78f63fdec314563be534d # sticky-pr-comment/v1
+        with:
+          marker: '<!-- e2e-command-status -->'
+          body: |
+            ### `/test-e2e` is running `${{ needs.prepare.outputs.filter }}`
+
+            Both trees, every time. The filter decides which specs run; the
+            command does not guess a tree from the diff.
+
+            | Tree | Check | Dispatch |
+            | --- | --- | --- |
+            | pro | `e2e-pro ${{ needs.prepare.outputs.filter }}` | ${{ steps.dispatch-pro.outcome == 'success' && 'started' || 'failed' }} |
+            | staged OSS | `e2e-oss ${{ needs.prepare.outputs.filter }}` | ${{ steps.dispatch-oss.outcome == 'success' && 'started' || 'failed' }} |
+
+            A filter that matches no specs fails its check rather than passing
+            quietly.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Close the pro check if its dispatch failed
+        if: ${{ steps.dispatch-pro.outcome == 'failure' }}
         uses: loft-sh/github-actions/.github/actions/comment-triggered-check@8784f60835f687ec36d82e5f6bcc976d504611cc
         with:
           mode: finish
-          check-run-id: ${{ needs.prepare.outputs.check-run-id }}
+          check-run-id: ${{ needs.prepare.outputs.pro-check-run-id }}
           suite-result: failure
-          summary: "Could not start the work. See the run log for details."
+          summary: "Could not start the pro suite. See the run log for details."
           details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Close the oss check if its dispatch failed
+        if: ${{ steps.dispatch-oss.outcome == 'failure' }}
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@8784f60835f687ec36d82e5f6bcc976d504611cc
+        with:
+          mode: finish
+          check-run-id: ${{ needs.prepare.outputs.oss-check-run-id }}
+          suite-result: failure
+          summary: "Could not start the staged OSS suite. See the run log for details."
+          details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      # continue-on-error above keeps the job green, which would hide a failed
+      # dispatch from anyone reading the run rather than the checks.
+      - name: Fail if either dispatch failed
+        if: ${{ steps.dispatch-pro.outcome == 'failure' || steps.dispatch-oss.outcome == 'failure' }}
+        run: exit 1

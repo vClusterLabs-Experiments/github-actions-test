@@ -1,0 +1,135 @@
+name: E2E pro run
+
+# Stand-in for vcluster-pro's e2e.yaml on the command path. Runs no tests: it
+# takes the same dispatch contract and produces a controllable conclusion, so the
+# command side can be exercised in seconds instead of an hour.
+#
+# The outcome is injected through the filter text, because the filter is the only
+# free-form value the command carries end to end:
+#
+#   contains "pro-fail"    -> the suite job fails
+#   contains "nothing"     -> the suite succeeds having selected no specs
+#   anything else          -> success
+#
+# "nothing" is the case that matters most. Ginkgo exits 0 on an empty selection,
+# so a green job is not evidence anything ran, and QA asked for that to fail
+# rather than sit grey (DEVOPS-1333).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ginkgo-label:
+        description: "Whatever followed /test-e2e."
+        required: false
+        default: ""
+        type: string
+      head-sha:
+        description: "Commit the check-run was opened on. The run refuses if the branch has moved since."
+        required: false
+        default: ""
+        type: string
+      check-run-id:
+        description: "Check-run to complete when this run finishes."
+        required: false
+        default: ""
+        type: string
+      concurrency-key:
+        description: "Slug plus digest of the filter, from the action."
+        required: false
+        default: ""
+        type: string
+      compose-with-pr:
+        description: "Whether the mandatory suite is ORed in. The command sets false."
+        required: false
+        default: true
+        type: boolean
+
+permissions: {}
+
+concurrency:
+  # Keyed by the filter, so a second `/test-e2e snapshots` supersedes the first
+  # while `/test-e2e istio` runs alongside it.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.concurrency-key }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    name: ${{ inputs.ginkgo-label }}
+    runs-on: ubuntu-latest
+    outputs:
+      check-conclusion: ${{ steps.conclusion.outputs.check-conclusion }}
+    permissions: {}
+
+    steps:
+      - name: Refuse to test a different commit
+        if: ${{ inputs.head-sha != '' }}
+        env:
+          EXPECTED: ${{ inputs.head-sha }}
+          ACTUAL: ${{ github.sha }}
+        run: |
+          if [[ "$EXPECTED" != "$ACTUAL" ]]; then
+            echo "::error::the branch moved after the check-run was opened. It is on ${EXPECTED}, this run is on ${ACTUAL}. Comment /test-e2e again to test the new commit."
+            exit 1
+          fi
+          echo "testing ${ACTUAL}, which is the commit the check-run was opened on"
+
+      - name: Stand in for the suite
+        env:
+          FILTER: ${{ inputs.ginkgo-label }}
+          COMPOSE_WITH_PR: ${{ inputs.compose-with-pr }}
+        run: |
+          echo "pro filter: ${FILTER}"
+          echo "compose-with-pr: ${COMPOSE_WITH_PR}"
+          # Long enough to observe a supersede, short enough to iterate.
+          sleep 30
+          case "${FILTER}" in
+            *pro-fail*) echo "::error::injected pro failure"; exit 1 ;;
+          esac
+
+      # Stands in for ginkgo-conclusion, mirroring its rules: an empty selection
+      # is neutral for the gate and failure for a hand-typed command filter.
+      - name: Derive the conclusion
+        id: conclusion
+        if: ${{ !cancelled() }}
+        env:
+          FILTER: ${{ inputs.ginkgo-label }}
+          CHECK_RUN_ID: ${{ inputs.check-run-id }}
+          RESULT: ${{ job.status }}
+        run: |
+          empty_conclusion=neutral
+          [[ -n "${CHECK_RUN_ID}" ]] && empty_conclusion=failure
+
+          if [[ "${RESULT}" != "success" ]]; then
+            conclusion=failure
+          elif [[ "${FILTER}" == *nothing* ]]; then
+            echo "::warning::the label filter matched no specs; reporting ${empty_conclusion}"
+            conclusion="${empty_conclusion}"
+          else
+            conclusion=success
+          fi
+          echo "pro conclusion: ${conclusion}"
+          echo "check-conclusion=${conclusion}" >> "$GITHUB_OUTPUT"
+
+  finish:
+    name: Publish pro result
+    needs: [suite]
+    # always(), so a superseded or cancelled run still closes the check-run it
+    # was given rather than leaving it spinning.
+    if: ${{ always() && inputs.check-run-id != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+
+    steps:
+      - name: Complete the check-run
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@8784f60835f687ec36d82e5f6bcc976d504611cc
+        with:
+          mode: finish
+          check-run-id: ${{ inputs.check-run-id }}
+          report-conclusion: ${{ needs.suite.outputs.check-conclusion }}
+          suite-result: ${{ needs.suite.result }}
+          summary: |
+            Pro tree, filter `${{ inputs.ginkgo-label }}`.
+
+            [View the run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

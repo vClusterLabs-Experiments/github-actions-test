@@ -101,6 +101,26 @@ jobs:
           summary: "Could not open both checks for this command. See the run log for details."
           details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
+      # Mirrors vcluster-pro's refusal comment. Here to cover the step the
+      # pr-number bug was actually on: it only runs for a fork or an
+      # unauthorized commenter or an empty filter, so it had never executed on a
+      # real issue_comment event and the failure was invisible.
+      - name: Explain a refusal
+        if: ${{ steps.pro.outputs.matched == 'true' && steps.pro.outputs.should-run != 'true' }}
+        uses: loft-sh/github-actions/.github/actions/sticky-pr-comment@ee112eee4fb449b7b1e78f63fdec314563be534d # sticky-pr-comment/v1
+        with:
+          # Required. The input defaults to github.event.pull_request.number,
+          # which is empty on issue_comment, and the action then refuses.
+          pr-number: ${{ github.event.issue.number }}
+          marker: '<!-- e2e-command-error -->'
+          body: |
+            ### `/test-e2e` did not run
+
+            | Reason | What to do |
+            | --- | --- |
+            | `${{ steps.pro.outputs.reason }}` | ${{ steps.pro.outputs.reason == 'fork' && 'e2e cannot run on pull requests from forks.' || steps.pro.outputs.reason == 'insufficient-permission' && 'You need access to this repository to run e2e.' || steps.pro.outputs.reason == 'empty-filter' && 'Give it a label filter, for example `/test-e2e snapshots`.' || 'See the run log for details.' }} |
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       # The outputs are the thing under test, so print them and let the job log
       # be the record. Both ids, because two distinct check-runs is the claim.
       - name: Report the decision

@@ -134,7 +134,7 @@ jobs:
 
     steps:
       - name: Complete the check-run
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@ad06f4c17696c472e98f266a4c011737b186399d
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
         with:
           mode: finish
           check-run-id: ${{ inputs.check-run-id }}

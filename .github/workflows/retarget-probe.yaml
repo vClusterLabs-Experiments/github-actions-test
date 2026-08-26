@@ -1,0 +1,23 @@
+name: Retarget probe
+
+# Measures which pull_request events a base-branch retarget actually fires.
+# No `branches:` filter on purpose: the filter is what silently stops e2e when a
+# PR is retargeted outside it, and that is not what this is testing.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+permissions: {}
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report the event
+        env:
+          ACTION: ${{ github.event.action }}
+          BASE: ${{ github.base_ref }}
+          CHANGES: ${{ toJSON(github.event.changes) }}
+        run: |
+          echo "action=${ACTION} base_ref=${BASE}"
+          echo "changes=${CHANGES}"

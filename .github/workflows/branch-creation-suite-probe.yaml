@@ -1,21 +1,40 @@
-name: Branch creation suite probe
+name: Filtered branch push suite probe
 
-# Reproduces the unrelated `create`-event suite that exists in vcluster-pro.
-# GitHub attaches API-created command checks to this suite when it is the first
-# suite on a newly pushed branch commit.
+# Mirrors the proposed vcluster-pro fix with experiment-only ref patterns. The
+# branch job stands in for freeze and the tag job stands in for unfreeze; neither
+# changes a ruleset.
 on:
-  create:
+  push:
+    branches:
+      - 'devops-1333/push-suite-*'
+    tags:
+      - 'probe-v[0-9]+.[0-9]+.0'
 
 permissions: {}
 
 jobs:
-  seed:
-    name: Seed branch creation suite
-    if: github.event.ref_type == 'branch'
+  freeze:
+    name: Freeze on release branch creation
+    if: github.event_name == 'push' && github.event.created && github.ref_type == 'branch'
     runs-on: ubuntu-latest
     steps:
-      - name: Report the created ref
+      - name: Report the created branch
         env:
-          REF: ${{ github.event.ref }}
+          CREATED: ${{ github.event.created }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
           REF_TYPE: ${{ github.event.ref_type }}
-        run: echo "created ${REF_TYPE} ${REF}"
+        run: echo "created=${CREATED} ref=${REF} ref_name=${REF_NAME} ref_type=${REF_TYPE}"
+
+  unfreeze:
+    name: Unfreeze on stable tag
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report the created tag
+        env:
+          CREATED: ${{ github.event.created }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.event.ref_type }}
+        run: echo "created=${CREATED} ref=${REF} ref_name=${REF_NAME} ref_type=${REF_TYPE}"

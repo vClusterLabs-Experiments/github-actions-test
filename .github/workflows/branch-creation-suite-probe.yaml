@@ -1,0 +1,21 @@
+name: Branch creation suite probe
+
+# Reproduces the unrelated `create`-event suite that exists in vcluster-pro.
+# GitHub attaches API-created command checks to this suite when it is the first
+# suite on a newly pushed branch commit.
+on:
+  create:
+
+permissions: {}
+
+jobs:
+  seed:
+    name: Seed branch creation suite
+    if: github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report the created ref
+        env:
+          REF: ${{ github.event.ref }}
+          REF_TYPE: ${{ github.event.ref_type }}
+        run: echo "created ${REF_TYPE} ${REF}"

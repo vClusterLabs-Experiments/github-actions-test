@@ -221,18 +221,16 @@ jobs:
           pr-number: ${{ github.event.issue.number }}
           marker: '<!-- e2e-command-status -->'
           body: |
-            ### `/test-e2e` is running `${{ needs.prepare.outputs.filter }}`
+            ### `/test-e2e ${{ needs.prepare.outputs.filter }}` started
 
-            Both trees, every time. The filter decides which specs run; the
-            command does not guess a tree from the diff.
+            The requested E2E tests are running against both vCluster Pro and OSS.
 
-            | Tree | Check | Dispatch |
+            | Suite | Check | Status |
             | --- | --- | --- |
-            | pro | `e2e-pro ${{ needs.prepare.outputs.filter }}` | ${{ steps.dispatch-pro.outcome == 'success' && 'started' || 'failed' }} |
-            | staged OSS | `e2e-oss ${{ needs.prepare.outputs.filter }}` | ${{ steps.dispatch-oss.outcome == 'success' && 'started' || 'failed' }} |
+            | Pro | `e2e-pro: ${{ needs.prepare.outputs.filter }}` | ${{ steps.dispatch-pro.outcome == 'success' && 'Started' || 'Failed to start' }} |
+            | OSS | `e2e-oss: ${{ needs.prepare.outputs.filter }}` | ${{ steps.dispatch-oss.outcome == 'success' && 'Started' || 'Failed to start' }} |
 
-            A filter that matches no specs fails its check rather than passing
-            quietly.
+            Only tests matching `${{ needs.prepare.outputs.filter }}` will run. If the filter matches no tests, both checks will fail.
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Close the pro check if its dispatch failed

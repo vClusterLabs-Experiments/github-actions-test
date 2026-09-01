@@ -23,7 +23,7 @@ jobs:
           CREATED: ${{ github.event.created }}
           REF: ${{ github.ref }}
           REF_NAME: ${{ github.ref_name }}
-          REF_TYPE: ${{ github.event.ref_type }}
+          REF_TYPE: ${{ github.ref_type }}
         run: echo "created=${CREATED} ref=${REF} ref_name=${REF_NAME} ref_type=${REF_TYPE}"
 
   unfreeze:
@@ -36,5 +36,5 @@ jobs:
           CREATED: ${{ github.event.created }}
           REF: ${{ github.ref }}
           REF_NAME: ${{ github.ref_name }}
-          REF_TYPE: ${{ github.event.ref_type }}
+          REF_TYPE: ${{ github.ref_type }}
         run: echo "created=${CREATED} ref=${REF} ref_name=${REF_NAME} ref_type=${REF_TYPE}"

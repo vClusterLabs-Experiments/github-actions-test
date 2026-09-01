@@ -32,3 +32,7 @@ branches, and GitHub events to exercise each workflow end-to-end.
 | Secret | Purpose |
 |--------|---------|
 | `GH_ACCESS_TOKEN` | PAT with `repo` scope for creating PRs, merging, deleting branches |
+
+<!-- scratch target for DEVOPS-1333 command matrix -->
+
+<!-- moved after the comment -->

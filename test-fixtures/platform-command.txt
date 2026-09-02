@@ -1,0 +1,1 @@
+Scratch target for the loft-enterprise single-suite command integration test.

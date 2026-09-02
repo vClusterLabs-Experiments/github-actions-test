@@ -1,0 +1,83 @@
+name: Platform command mock run
+
+on:
+  workflow_dispatch:
+    inputs:
+      ginkgo-label:
+        description: Filter from the comment command.
+        required: true
+        type: string
+      head-sha:
+        description: Commit the check was opened on.
+        required: true
+        type: string
+      check-run-id:
+        description: Check-run completed by the finish job.
+        required: true
+        type: string
+      concurrency-key:
+        description: Normalized filter key.
+        required: true
+        type: string
+      pr-number:
+        description: Pull request scope for concurrency.
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  suite:
+    name: Mock Platform suite
+    runs-on: ubuntu-latest
+    permissions: {}
+    concurrency:
+      group: platform-command-${{ inputs.pr-number }}-${{ inputs.concurrency-key }}
+      cancel-in-progress: true
+    outputs:
+      check-conclusion: ${{ steps.conclusion.outputs.check-conclusion }}
+    steps:
+      - name: Verify head SHA
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.head-sha }}
+          ACTUAL_HEAD_SHA: ${{ github.sha }}
+        run: |
+          [[ "$EXPECTED_HEAD_SHA" == "$ACTUAL_HEAD_SHA" ]] || exit 1
+
+      - name: Simulate suite
+        env:
+          FILTER: ${{ inputs.ginkgo-label }}
+        run: |
+          sleep 20
+          [[ "$FILTER" != *fail* ]] || exit 1
+
+      - name: Derive result
+        id: conclusion
+        if: ${{ !cancelled() }}
+        env:
+          FILTER: ${{ inputs.ginkgo-label }}
+          RESULT: ${{ job.status }}
+        run: |
+          if [[ "$RESULT" != success || "$FILTER" == *nothing* ]]; then
+            conclusion=failure
+          else
+            conclusion=success
+          fi
+          echo "check-conclusion=${conclusion}" >> "$GITHUB_OUTPUT"
+
+  finish:
+    name: Publish mock result
+    needs: [suite]
+    if: ${{ always() && inputs.check-run-id != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+    steps:
+      - name: Complete check
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        with:
+          mode: finish
+          check-run-id: ${{ inputs.check-run-id }}
+          report-conclusion: ${{ needs.suite.result != 'cancelled' && needs.suite.outputs.check-conclusion || '' }}
+          suite-result: ${{ needs.suite.result }}
+          details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

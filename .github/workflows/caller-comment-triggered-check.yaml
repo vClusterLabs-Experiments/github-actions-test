@@ -121,7 +121,7 @@ jobs:
 
             | Reason | What to do |
             | --- | --- |
-            | `${{ steps.pro.outputs.reason }}` | ${{ steps.pro.outputs.reason == 'fork' && 'e2e cannot run on pull requests from forks.' || steps.pro.outputs.reason == 'insufficient-permission' && 'You need access to this repository to run e2e.' || steps.pro.outputs.reason == 'empty-filter' && 'Give it a label filter, for example `/test-e2e snapshots`.' || 'See the run log for details.' }} |
+            | ${{ steps.pro.outputs.reason == 'malformed-focus' && 'Focus value is missing' || format('`{0}`', steps.pro.outputs.reason) }} | ${{ steps.pro.outputs.reason == 'fork' && 'e2e cannot run on pull requests from forks.' || steps.pro.outputs.reason == 'insufficient-permission' && 'You need access to this repository to run e2e.' || steps.pro.outputs.reason == 'empty-filter' && 'Give it a label filter, for example `/test-e2e snapshots`.' || steps.pro.outputs.reason == 'malformed-focus' && 'Add a value after `--focus`. For example: `/test-e2e snapshots --focus "creates snapshots"`.' || 'See the run log for details.' }} |
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # The outputs are the thing under test, so print them and let the job log

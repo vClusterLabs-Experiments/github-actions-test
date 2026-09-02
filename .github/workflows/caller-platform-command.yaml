@@ -1,0 +1,107 @@
+name: Platform command integration
+
+# Single-check variant of the comment-triggered workflow used by
+# loft-enterprise. Kept separate from the vcluster-pro two-tree harness.
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  prepare:
+    name: Parse command
+    if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, '/test-platform-e2e') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    outputs:
+      should-run: ${{ steps.command.outputs.should-run }}
+      filter: ${{ steps.command.outputs.filter }}
+      head-ref: ${{ steps.command.outputs.head-ref }}
+      head-sha: ${{ steps.command.outputs.head-sha }}
+      key: ${{ steps.command.outputs.concurrency-key }}
+      check-run-id: ${{ steps.command.outputs.check-run-id }}
+
+    steps:
+      - name: Parse command and open check
+        id: command
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        with:
+          mode: start
+          command: /test-platform-e2e
+          check-name-prefix: e2e-platform
+          comment-body: ${{ github.event.comment.body }}
+          comment-author: ${{ github.event.comment.user.login }}
+          author-association: ${{ github.event.comment.author_association }}
+          pr-number: ${{ github.event.issue.number }}
+          run-id: ${{ github.run_id }}
+          server-url: ${{ github.server_url }}
+
+      - name: Explain refusal
+        if: ${{ steps.command.outputs.matched == 'true' && steps.command.outputs.should-run != 'true' }}
+        uses: loft-sh/github-actions/.github/actions/sticky-pr-comment@sticky-pr-comment/v1
+        with:
+          pr-number: ${{ github.event.issue.number }}
+          marker: '<!-- platform-e2e-command-error -->'
+          body: |
+            `/test-platform-e2e` refused the command: `${{ steps.command.outputs.reason }}`.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  dispatch:
+    name: Dispatch suite
+    needs: [prepare]
+    if: ${{ needs.prepare.outputs.should-run == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      checks: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      HEAD_REF: ${{ needs.prepare.outputs.head-ref }}
+      HEAD_SHA: ${{ needs.prepare.outputs.head-sha }}
+      FILTER: ${{ needs.prepare.outputs.filter }}
+      KEY: ${{ needs.prepare.outputs.key }}
+      CHECK_RUN_ID: ${{ needs.prepare.outputs.check-run-id }}
+      PR_NUMBER: ${{ github.event.issue.number }}
+
+    steps:
+      - name: Dispatch mock Platform suite
+        id: dispatch
+        continue-on-error: true
+        run: |
+          gh workflow run caller-platform-run.yaml \
+            --ref "$HEAD_REF" \
+            -f "ginkgo-label=$FILTER" \
+            -f "head-sha=$HEAD_SHA" \
+            -f "concurrency-key=$KEY" \
+            -f "pr-number=$PR_NUMBER" \
+            -f "check-run-id=$CHECK_RUN_ID"
+
+      - name: Close check if dispatch failed
+        if: ${{ always() && steps.dispatch.outcome == 'failure' }}
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        with:
+          mode: finish
+          check-run-id: ${{ needs.prepare.outputs.check-run-id }}
+          suite-result: failure
+          summary: "Could not start the mock Platform suite."
+          details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Report dispatch
+        if: always()
+        uses: loft-sh/github-actions/.github/actions/sticky-pr-comment@sticky-pr-comment/v1
+        with:
+          pr-number: ${{ github.event.issue.number }}
+          marker: '<!-- platform-e2e-command-status-${{ needs.prepare.outputs.key }} -->'
+          body: |
+            `/test-platform-e2e ${{ needs.prepare.outputs.filter }}`: `${{ steps.dispatch.outcome }}`.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fail if dispatch failed
+        if: ${{ always() && steps.dispatch.outcome == 'failure' }}
+        run: exit 1

@@ -3,7 +3,7 @@ name: Comment-triggered check (command)
 # Integration check for the comment-triggered-check action, mirroring
 # vcluster-pro's e2e-command.yaml with sleeps standing in for the suites.
 #
-# `/test-e2e <filter>` opens TWO check-runs on the pull request's head commit,
+# `/test-e2e <filter> [--focus "<regex>"]` opens TWO check-runs on the pull request's head commit,
 # one per tree, and dispatches both to the head branch. Two checks from one
 # comment is the thing under test here: the action opens one check-run per start
 # call, so it is called twice, and each dispatched run closes its own.
@@ -49,6 +49,7 @@ jobs:
       reason: ${{ steps.pro.outputs.reason }}
       matched: ${{ steps.pro.outputs.matched }}
       filter: ${{ steps.pro.outputs.filter }}
+      focus: ${{ steps.pro.outputs.focus }}
       head-ref: ${{ steps.pro.outputs.head-ref }}
       head-sha: ${{ steps.pro.outputs.head-sha }}
       key: ${{ steps.pro.outputs.concurrency-key }}
@@ -61,11 +62,12 @@ jobs:
       # DEFINITION from the pull request and run it with this token.
       - name: Parse the command and open the pro check
         id: pro
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@d38e3200f19343bf44acedd318c318a2db1b837e # test pin: github-actions#250
         with:
           mode: start
           command: /test-e2e
           check-name-prefix: e2e-pro
+          parse-focus: true
           comment-body: ${{ github.event.comment.body }}
           comment-author: ${{ github.event.comment.user.login }}
           author-association: ${{ github.event.comment.author_association }}
@@ -76,11 +78,12 @@ jobs:
       - name: Open the oss check
         id: oss
         if: ${{ steps.pro.outputs.should-run == 'true' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@d38e3200f19343bf44acedd318c318a2db1b837e # test pin: github-actions#250
         with:
           mode: start
           command: /test-e2e
           check-name-prefix: e2e-oss
+          parse-focus: true
           comment-body: ${{ github.event.comment.body }}
           comment-author: ${{ github.event.comment.user.login }}
           author-association: ${{ github.event.comment.author_association }}
@@ -93,7 +96,7 @@ jobs:
       # this the pro check sits in progress forever.
       - name: Close whatever was opened if preparing failed
         if: failure()
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@d38e3200f19343bf44acedd318c318a2db1b837e # test pin: github-actions#250
         with:
           mode: finish
           check-run-id: ${{ steps.pro.outputs.check-run-id }}
@@ -130,6 +133,7 @@ jobs:
           SHOULD_RUN: ${{ steps.pro.outputs.should-run }}
           REASON: ${{ steps.pro.outputs.reason }}
           FILTER: ${{ steps.pro.outputs.filter }}
+          FOCUS: ${{ steps.pro.outputs.focus }}
           HEAD_SHA: ${{ steps.pro.outputs.head-sha }}
           HEAD_REF: ${{ steps.pro.outputs.head-ref }}
           KEY: ${{ steps.pro.outputs.concurrency-key }}
@@ -145,6 +149,7 @@ jobs:
             echo "| should-run | \`${SHOULD_RUN}\` |"
             echo "| reason | \`${REASON}\` |"
             echo "| filter | \`${FILTER}\` |"
+            echo "| focus | \`${FOCUS}\` |"
             echo "| head-sha | \`${HEAD_SHA}\` |"
             echo "| head-ref | \`${HEAD_REF}\` |"
             echo "| concurrency-key | \`${KEY}\` |"
@@ -179,6 +184,7 @@ jobs:
       HEAD_REF: ${{ needs.prepare.outputs.head-ref }}
       HEAD_SHA: ${{ needs.prepare.outputs.head-sha }}
       FILTER: ${{ needs.prepare.outputs.filter }}
+      FOCUS: ${{ needs.prepare.outputs.focus }}
       KEY: ${{ needs.prepare.outputs.key }}
 
     steps:
@@ -193,6 +199,7 @@ jobs:
           gh workflow run caller-e2e-pro-run.yaml \
             --ref "$HEAD_REF" \
             -f "ginkgo-label=$FILTER" \
+            -f "ginkgo-focus=$FOCUS" \
             -f "head-sha=$HEAD_SHA" \
             -f "compose-with-pr=false" \
             -f "concurrency-key=$KEY" \
@@ -207,6 +214,7 @@ jobs:
           gh workflow run caller-e2e-oss-run.yaml \
             --ref "$HEAD_REF" \
             -f "ginkgo-label=$FILTER" \
+            -f "ginkgo-focus=$FOCUS" \
             -f "head-sha=$HEAD_SHA" \
             -f "compose-with-pr=false" \
             -f "concurrency-key=$KEY" \
@@ -221,21 +229,21 @@ jobs:
           pr-number: ${{ github.event.issue.number }}
           marker: '<!-- e2e-command-status -->'
           body: |
-            ### `/test-e2e ${{ needs.prepare.outputs.filter }}` started
+            ### `/test-e2e ${{ needs.prepare.outputs.filter }}${{ needs.prepare.outputs.focus != '' && format(' --focus "{0}"', needs.prepare.outputs.focus) || '' }}` started
 
             The requested E2E tests are running against both vCluster Pro and OSS.
 
             | Suite | Check | Status |
             | --- | --- | --- |
-            | Pro | `e2e-pro: ${{ needs.prepare.outputs.filter }}` | ${{ steps.dispatch-pro.outcome == 'success' && 'Started' || 'Failed to start' }} |
-            | OSS | `e2e-oss: ${{ needs.prepare.outputs.filter }}` | ${{ steps.dispatch-oss.outcome == 'success' && 'Started' || 'Failed to start' }} |
+            | Pro | `e2e-pro: ${{ needs.prepare.outputs.filter }}${{ needs.prepare.outputs.focus != '' && format(' --focus "{0}"', needs.prepare.outputs.focus) || '' }}` | ${{ steps.dispatch-pro.outcome == 'success' && 'Started' || 'Failed to start' }} |
+            | OSS | `e2e-oss: ${{ needs.prepare.outputs.filter }}${{ needs.prepare.outputs.focus != '' && format(' --focus "{0}"', needs.prepare.outputs.focus) || '' }}` | ${{ steps.dispatch-oss.outcome == 'success' && 'Started' || 'Failed to start' }} |
 
-            Only tests matching `${{ needs.prepare.outputs.filter }}` will run. If the filter matches no tests, both checks will fail.
+            Only tests matching `${{ needs.prepare.outputs.filter }}`${{ needs.prepare.outputs.focus != '' && format(' and focus "{0}"', needs.prepare.outputs.focus) || '' }} will run.
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Close the pro check if its dispatch failed
         if: ${{ steps.dispatch-pro.outcome == 'failure' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@d38e3200f19343bf44acedd318c318a2db1b837e # test pin: github-actions#250
         with:
           mode: finish
           check-run-id: ${{ needs.prepare.outputs.pro-check-run-id }}
@@ -245,7 +253,7 @@ jobs:
 
       - name: Close the oss check if its dispatch failed
         if: ${{ steps.dispatch-oss.outcome == 'failure' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@d38e3200f19343bf44acedd318c318a2db1b837e # test pin: github-actions#250
         with:
           mode: finish
           check-run-id: ${{ needs.prepare.outputs.oss-check-run-id }}

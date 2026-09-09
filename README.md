@@ -21,6 +21,8 @@ This repo contains caller workflows that exercise each reusable workflow from
 | `caller-backport.yaml` | `backport.yaml` |
 | `caller-clean-github-cache.yaml` | `clean-github-cache.yaml` |
 | `caller-cleanup-backport-branches.yaml` | `cleanup-backport-branches.yaml` |
+| `caller-secret-broker-request.yaml` | creates and queues a short-lived broker request |
+| `caller-secret-broker-response.yaml` | `secret-broker-request` action |
 
 ## Integration test orchestrator
 
@@ -32,3 +34,11 @@ branches, and GitHub events to exercise each workflow end-to-end.
 | Secret | Purpose |
 |--------|---------|
 | `GH_ACCESS_TOKEN` | PAT with `repo` scope for creating PRs, merging, deleting branches |
+| `AUTH_APP_PRIVATE_KEY` | Private key for the Members read-only authorization App |
+
+The secret broker integration also needs `AUTH_APP_CLIENT_ID` as an Actions
+variable. Run `caller-secret-broker-request.yaml` manually. Its authenticated
+push starts the source workflow, then the response workflow tests active
+membership, fail-closed denial, immutable request validation, the private
+preflight bundle, atomic claim, and replay rejection against the real GitHub
+API. It performs no secret-store read.

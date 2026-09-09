@@ -7,6 +7,10 @@ on:
         description: Filter from the comment command.
         required: true
         type: string
+      ginkgo-focus:
+        description: Focus regex from the comment command.
+        required: false
+        type: string
       head-sha:
         description: Commit the check was opened on.
         required: true
@@ -47,8 +51,10 @@ jobs:
       - name: Simulate suite
         env:
           FILTER: ${{ inputs.ginkgo-label }}
+          FOCUS: ${{ inputs.ginkgo-focus }}
         run: |
           sleep 20
+          printf 'filter=%s\nfocus=%s\n' "$FILTER" "$FOCUS"
           [[ "$FILTER" != *fail* ]] || exit 1
 
       - name: Derive result
@@ -56,9 +62,10 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           FILTER: ${{ inputs.ginkgo-label }}
+          FOCUS: ${{ inputs.ginkgo-focus }}
           RESULT: ${{ job.status }}
         run: |
-          if [[ "$RESULT" != success || "$FILTER" == *nothing* ]]; then
+          if [[ "$RESULT" != success || "$FILTER" == *nothing* || "$FOCUS" == *nothing* ]]; then
             conclusion=failure
           else
             conclusion=success

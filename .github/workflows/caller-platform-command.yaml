@@ -20,6 +20,7 @@ jobs:
     outputs:
       should-run: ${{ steps.command.outputs.should-run }}
       filter: ${{ steps.command.outputs.filter }}
+      focus: ${{ steps.command.outputs.focus }}
       head-ref: ${{ steps.command.outputs.head-ref }}
       head-sha: ${{ steps.command.outputs.head-sha }}
       key: ${{ steps.command.outputs.concurrency-key }}
@@ -33,6 +34,7 @@ jobs:
           mode: start
           command: /test-platform-e2e
           check-name-prefix: e2e-platform
+          parse-focus: true
           comment-body: ${{ github.event.comment.body }}
           comment-author: ${{ github.event.comment.user.login }}
           author-association: ${{ github.event.comment.author_association }}
@@ -65,6 +67,7 @@ jobs:
       HEAD_REF: ${{ needs.prepare.outputs.head-ref }}
       HEAD_SHA: ${{ needs.prepare.outputs.head-sha }}
       FILTER: ${{ needs.prepare.outputs.filter }}
+      FOCUS: ${{ needs.prepare.outputs.focus }}
       KEY: ${{ needs.prepare.outputs.key }}
       CHECK_RUN_ID: ${{ needs.prepare.outputs.check-run-id }}
       PR_NUMBER: ${{ github.event.issue.number }}
@@ -77,6 +80,7 @@ jobs:
           gh workflow run caller-platform-run.yaml \
             --ref "$HEAD_REF" \
             -f "ginkgo-label=$FILTER" \
+            -f "ginkgo-focus=$FOCUS" \
             -f "head-sha=$HEAD_SHA" \
             -f "concurrency-key=$KEY" \
             -f "pr-number=$PR_NUMBER" \
@@ -99,7 +103,7 @@ jobs:
           pr-number: ${{ github.event.issue.number }}
           marker: '<!-- platform-e2e-command-status-${{ needs.prepare.outputs.key }} -->'
           body: |
-            `/test-platform-e2e ${{ needs.prepare.outputs.filter }}`: `${{ steps.dispatch.outcome }}`.
+            `/test-platform-e2e ${{ needs.prepare.outputs.filter }}${{ needs.prepare.outputs.focus != '' && format(' --focus "{0}"', needs.prepare.outputs.focus) || '' }}`: `${{ steps.dispatch.outcome }}`.
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fail if dispatch failed

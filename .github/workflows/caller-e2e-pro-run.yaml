@@ -93,24 +93,21 @@ jobs:
             *pro-fail*) echo "::error::injected pro failure"; exit 1 ;;
           esac
 
-      # Stands in for ginkgo-conclusion, mirroring its rules: an empty selection
-      # is neutral for the gate and failure for a hand-typed command filter.
+      # Stands in for ginkgo-conclusion. An empty selection is neutral.
       - name: Derive the conclusion
         id: conclusion
         if: ${{ !cancelled() }}
         env:
           FILTER: ${{ inputs.ginkgo-label }}
           FOCUS: ${{ inputs.ginkgo-focus }}
-          CHECK_RUN_ID: ${{ inputs.check-run-id }}
           RESULT: ${{ job.status }}
         run: |
           empty_conclusion=neutral
-          [[ -n "${CHECK_RUN_ID}" ]] && empty_conclusion=failure
 
           if [[ "${RESULT}" != "success" ]]; then
             conclusion=failure
           elif [[ "${FILTER}" == *nothing* ]]; then
-            echo "::warning::the label filter matched no specs; reporting ${empty_conclusion}"
+            echo "::notice::the label filter matched no specs; reporting neutral"
             conclusion="${empty_conclusion}"
           elif [[ "${FOCUS}" == *nothing* || "${FOCUS}" == *oss-only* ]]; then
             echo "::notice::the focus matched no pro specs; reporting neutral"
@@ -133,7 +130,7 @@ jobs:
 
     steps:
       - name: Complete the check-run
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@d38e3200f19343bf44acedd318c318a2db1b837e # test pin: github-actions#250
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@2a21f174b4a1486e06353e740af9c8822162fa46 # test pin: github-actions#269
         with:
           mode: finish
           check-run-id: ${{ inputs.check-run-id }}

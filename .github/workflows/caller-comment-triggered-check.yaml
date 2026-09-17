@@ -3,10 +3,8 @@ name: Comment-triggered check (command)
 # Integration check for the comment-triggered-check action, mirroring
 # vcluster-pro's e2e-command.yaml with sleeps standing in for the suites.
 #
-# `/test-e2e <filter> [--focus "<regex>"]` opens TWO check-runs on the pull request's head commit,
-# one per tree, and dispatches both to the head branch. Two checks from one
-# comment is the thing under test here: the action opens one check-run per start
-# call, so it is called twice, and each dispatched run closes its own.
+# `/test-e2e <filter>` opens one check-run per selected tree. By default it
+# dispatches both; `--target pro|oss` narrows the command to one tree.
 #
 # This repository exists because `issue_comment` only ever fires from the copy of
 # a workflow on the DEFAULT BRANCH, so the command cannot be exercised from the
@@ -16,11 +14,10 @@ name: Comment-triggered check (command)
 # Outcomes are injected through the filter text; see caller-e2e-pro-run.yaml.
 #   /test-e2e ok           both green
 #   /test-e2e oss-fail     pro green, oss red
-#   /test-e2e nothing      both red, NOT grey
+#   /test-e2e nothing      both neutral
 #
-# TODO: pin to comment-triggered-check/v1 once loft-sh/github-actions#226 is
-# merged and tagged. The SHA is the pull request head so the two can be
-# exercised together.
+# Temporary test pin for loft-sh/github-actions#269. Move back to the rolling
+# action tag after that pull request is merged and tagged.
 
 on:
   issue_comment:
@@ -45,14 +42,18 @@ jobs:
       checks: write
       pull-requests: write
     outputs:
-      should-run: ${{ steps.pro.outputs.should-run }}
-      reason: ${{ steps.pro.outputs.reason }}
+      should-run: >-
+        ${{
+          (steps.pro.outputs.should-run == 'true' || steps.oss.outputs.should-run == 'true') &&
+          (steps.pro.outputs.target != '' || steps.oss.outputs.should-run == 'true')
+        }}
       matched: ${{ steps.pro.outputs.matched }}
       filter: ${{ steps.pro.outputs.filter }}
       focus: ${{ steps.pro.outputs.focus }}
-      head-ref: ${{ steps.pro.outputs.head-ref }}
-      head-sha: ${{ steps.pro.outputs.head-sha }}
-      key: ${{ steps.pro.outputs.concurrency-key }}
+      target: ${{ steps.pro.outputs.target }}
+      head-ref: ${{ steps.pro.outputs.target == 'oss' && steps.oss.outputs.head-ref || steps.pro.outputs.head-ref }}
+      head-sha: ${{ steps.pro.outputs.target == 'oss' && steps.oss.outputs.head-sha || steps.pro.outputs.head-sha }}
+      key: ${{ steps.pro.outputs.target == 'oss' && steps.oss.outputs.concurrency-key || steps.pro.outputs.concurrency-key }}
       pro-check-run-id: ${{ steps.pro.outputs.check-run-id }}
       oss-check-run-id: ${{ steps.oss.outputs.check-run-id }}
 
@@ -62,12 +63,13 @@ jobs:
       # DEFINITION from the pull request and run it with this token.
       - name: Parse the command and open the pro check
         id: pro
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@d38e3200f19343bf44acedd318c318a2db1b837e # test pin: github-actions#250
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@2a21f174b4a1486e06353e740af9c8822162fa46 # test pin: github-actions#269
         with:
           mode: start
           command: /test-e2e
           check-name-prefix: e2e-pro
           parse-focus: true
+          target-name: pro
           comment-body: ${{ github.event.comment.body }}
           comment-author: ${{ github.event.comment.user.login }}
           author-association: ${{ github.event.comment.author_association }}
@@ -77,13 +79,14 @@ jobs:
 
       - name: Open the oss check
         id: oss
-        if: ${{ steps.pro.outputs.should-run == 'true' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@d38e3200f19343bf44acedd318c318a2db1b837e # test pin: github-actions#250
+        if: ${{ steps.pro.outputs.target == 'oss' || (steps.pro.outputs.target == '' && steps.pro.outputs.should-run == 'true') }}
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@2a21f174b4a1486e06353e740af9c8822162fa46 # test pin: github-actions#269
         with:
           mode: start
           command: /test-e2e
           check-name-prefix: e2e-oss
           parse-focus: true
+          target-name: oss
           comment-body: ${{ github.event.comment.body }}
           comment-author: ${{ github.event.comment.user.login }}
           author-association: ${{ github.event.comment.author_association }}
@@ -96,7 +99,7 @@ jobs:
       # this the pro check sits in progress forever.
       - name: Close whatever was opened if preparing failed
         if: failure()
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@d38e3200f19343bf44acedd318c318a2db1b837e # test pin: github-actions#250
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@2a21f174b4a1486e06353e740af9c8822162fa46 # test pin: github-actions#269
         with:
           mode: finish
           check-run-id: ${{ steps.pro.outputs.check-run-id }}
@@ -104,24 +107,27 @@ jobs:
           summary: "Could not open both checks for this command. See the run log for details."
           details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-      # Mirrors vcluster-pro's refusal comment. Here to cover the step the
-      # pr-number bug was actually on: it only runs for a fork or an
-      # unauthorized commenter or an empty filter, so it had never executed on a
-      # real issue_comment event and the failure was invisible.
       - name: Explain a refusal
-        if: ${{ steps.pro.outputs.matched == 'true' && steps.pro.outputs.should-run != 'true' }}
+        if: >-
+          ${{
+            steps.pro.outputs.matched == 'true' &&
+            (
+              (steps.pro.outputs.reason != '' && steps.pro.outputs.reason != 'target-not-selected') ||
+              (steps.oss.outputs.reason != '' && steps.oss.outputs.reason != 'target-not-selected')
+            )
+          }}
         uses: loft-sh/github-actions/.github/actions/sticky-pr-comment@ee112eee4fb449b7b1e78f63fdec314563be534d # sticky-pr-comment/v1
         with:
           # Required. The input defaults to github.event.pull_request.number,
           # which is empty on issue_comment, and the action then refuses.
           pr-number: ${{ github.event.issue.number }}
-          marker: '<!-- e2e-command-error -->'
+          marker: '<!-- e2e-command-status -->'
           body: |
             ### `/test-e2e` did not run
 
             | Reason | What to do |
             | --- | --- |
-            | ${{ steps.pro.outputs.reason == 'malformed-focus' && 'Focus value is missing' || format('`{0}`', steps.pro.outputs.reason) }} | ${{ steps.pro.outputs.reason == 'fork' && 'e2e cannot run on pull requests from forks.' || steps.pro.outputs.reason == 'insufficient-permission' && 'You need access to this repository to run e2e.' || steps.pro.outputs.reason == 'empty-filter' && 'Give it a label filter, for example `/test-e2e snapshots`.' || steps.pro.outputs.reason == 'malformed-focus' && 'Add a value after `--focus`. For example: `/test-e2e snapshots --focus "creates snapshots"`.' || 'See the run log for details.' }} |
+            | ${{ steps.pro.outputs.reason-title || steps.oss.outputs.reason-title }} | ${{ steps.pro.outputs.reason-guidance || steps.oss.outputs.reason-guidance }} |
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # The outputs are the thing under test, so print them and let the job log
@@ -192,6 +198,7 @@ jobs:
       # never silently costs the other its run.
       - name: Run the pro suite on the head branch
         id: dispatch-pro
+        if: ${{ needs.prepare.outputs.target != 'oss' }}
         continue-on-error: true
         env:
           CHECK_RUN_ID: ${{ needs.prepare.outputs.pro-check-run-id }}
@@ -207,6 +214,7 @@ jobs:
 
       - name: Run the oss suite on the head branch
         id: dispatch-oss
+        if: ${{ needs.prepare.outputs.target != 'pro' }}
         continue-on-error: true
         env:
           CHECK_RUN_ID: ${{ needs.prepare.outputs.oss-check-run-id }}
@@ -229,21 +237,22 @@ jobs:
           pr-number: ${{ github.event.issue.number }}
           marker: '<!-- e2e-command-status -->'
           body: |
-            ### `/test-e2e ${{ needs.prepare.outputs.filter }}${{ needs.prepare.outputs.focus != '' && format(' --focus "{0}"', needs.prepare.outputs.focus) || '' }}` started
+            ### `/test-e2e` started
 
-            The requested E2E tests are running against both vCluster Pro and OSS.
+            Target: `${{ needs.prepare.outputs.target != '' && needs.prepare.outputs.target || 'pro + oss' }}`
 
-            | Suite | Check | Status |
-            | --- | --- | --- |
-            | Pro | `e2e-pro: ${{ needs.prepare.outputs.filter }}${{ needs.prepare.outputs.focus != '' && format(' --focus "{0}"', needs.prepare.outputs.focus) || '' }}` | ${{ steps.dispatch-pro.outcome == 'success' && 'Started' || 'Failed to start' }} |
-            | OSS | `e2e-oss: ${{ needs.prepare.outputs.filter }}${{ needs.prepare.outputs.focus != '' && format(' --focus "{0}"', needs.prepare.outputs.focus) || '' }}` | ${{ steps.dispatch-oss.outcome == 'success' && 'Started' || 'Failed to start' }} |
+            - **Pro:** ${{ needs.prepare.outputs.target == 'oss' && 'Not requested' || steps.dispatch-pro.outcome == 'success' && 'Started' || 'Failed to start' }}
+            - **OSS:** ${{ needs.prepare.outputs.target == 'pro' && 'Not requested' || steps.dispatch-oss.outcome == 'success' && 'Started' || 'Failed to start' }}
 
-            Only tests matching `${{ needs.prepare.outputs.filter }}`${{ needs.prepare.outputs.focus != '' && format(' and focus "{0}"', needs.prepare.outputs.focus) || '' }} will run.
+            Filter: `${{ needs.prepare.outputs.filter }}`
+            ${{ needs.prepare.outputs.focus != '' && format('Focus: `{0}`', needs.prepare.outputs.focus) || '' }}
+
+            If no specs match in a selected tree, its check reports **Nothing to run**.
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Close the pro check if its dispatch failed
         if: ${{ steps.dispatch-pro.outcome == 'failure' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@d38e3200f19343bf44acedd318c318a2db1b837e # test pin: github-actions#250
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@2a21f174b4a1486e06353e740af9c8822162fa46 # test pin: github-actions#269
         with:
           mode: finish
           check-run-id: ${{ needs.prepare.outputs.pro-check-run-id }}
@@ -253,7 +262,7 @@ jobs:
 
       - name: Close the oss check if its dispatch failed
         if: ${{ steps.dispatch-oss.outcome == 'failure' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@d38e3200f19343bf44acedd318c318a2db1b837e # test pin: github-actions#250
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@2a21f174b4a1486e06353e740af9c8822162fa46 # test pin: github-actions#269
         with:
           mode: finish
           check-run-id: ${{ needs.prepare.outputs.oss-check-run-id }}

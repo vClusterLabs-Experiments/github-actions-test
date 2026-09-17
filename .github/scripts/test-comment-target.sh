@@ -24,6 +24,8 @@ assert_not_contains() {
 }
 
 assert_contains "$command_workflow" 'target: ${{ steps.pro.outputs.target }}'
+assert_contains "$command_workflow" 'comment-triggered-check@comment-triggered-check/v1'
+assert_not_contains "$command_workflow" 'comment-triggered-check@2a21f174b4a1486e06353e740af9c8822162fa46'
 assert_contains "$command_workflow" 'target-name: pro'
 assert_contains "$command_workflow" 'target-name: oss'
 assert_contains "$command_workflow" "steps.pro.outputs.target == 'oss' || (steps.pro.outputs.target == '' && steps.pro.outputs.should-run == 'true')"

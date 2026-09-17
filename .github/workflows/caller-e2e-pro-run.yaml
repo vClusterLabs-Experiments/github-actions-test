@@ -130,7 +130,7 @@ jobs:
 
     steps:
       - name: Complete the check-run
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@2a21f174b4a1486e06353e740af9c8822162fa46 # test pin: github-actions#269
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
         with:
           mode: finish
           check-run-id: ${{ inputs.check-run-id }}

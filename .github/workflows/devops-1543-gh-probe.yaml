@@ -1,0 +1,104 @@
+name: DEVOPS-1543 gh version probe
+
+# Differential proof for loft-sh/github-actions#274: run the legacy backport's
+# open-PR filter against this repo's own PRs, first with the gh the runner ships
+# and then with the gh 2.14.2 that install-gh-cli-action pins. Temporary.
+
+on:
+  push:
+    branches: [devops-1543/gh-probe]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EXPECTED_REPO: ${{ github.repository }}
+      BACKPORT_BRANCH: backport/v0.36/b6e067ead0540e00a7751f24aabfa517cefe908d
+      LEGACY_PREFIX: backport/v0.36/
+      SOURCE_SHA: b6e067ead0540e00a7751f24aabfa517cefe908d
+      SOURCE_PR_REF: loft-sh/vcluster-pro#2439
+    steps:
+      - name: Preinstalled gh -- version
+        run: gh --version
+
+      - name: Preinstalled gh -- run the real filter
+        id: new
+        continue-on-error: true
+        run: |
+          set +e
+          out="$(gh pr list --repo "$EXPECTED_REPO" --state open --limit 100 \
+            --json number,headRefName,headRepository,body,url --jq '
+              map(
+                . as $pr |
+                select($pr.headRepository.nameWithOwner == env.EXPECTED_REPO) |
+                select(
+                  $pr.headRefName == env.BACKPORT_BRANCH or
+                  (
+                    env.SOURCE_PR_REF != "" and
+                    ($pr.headRefName | startswith(env.LEGACY_PREFIX)) and
+                    (($pr.headRefName | ltrimstr(env.LEGACY_PREFIX)) != "") and
+                    (env.SOURCE_SHA | startswith($pr.headRefName | ltrimstr(env.LEGACY_PREFIX))) and
+                    (($pr.body // "") | contains(env.SOURCE_PR_REF))
+                  )
+                )
+              ) |
+              sort_by(if .headRefName == env.BACKPORT_BRANCH then 0 else 1 end) |
+              .[0] // empty |
+              if . == "" then empty else [.number, .headRefName, .url] | @tsv end
+            ' 2>&1)"
+          rc=$?
+          echo "exit=${rc}"
+          echo "output=${out}"
+          echo "rc=${rc}" >> "$GITHUB_OUTPUT"
+
+      - name: Install gh 2.14.2, exactly as the shared workflow did
+        uses: dev-hanz-ops/install-gh-cli-action@af38ce09b1ec248aeb08eea2b16bbecea9e059f8 # v0.2.1
+
+      - name: Downgraded gh -- version
+        run: gh --version
+
+      - name: Downgraded gh -- run the same filter
+        id: old
+        continue-on-error: true
+        run: |
+          set +e
+          out="$(gh pr list --repo "$EXPECTED_REPO" --state open --limit 100 \
+            --json number,headRefName,headRepository,body,url --jq '
+              map(
+                . as $pr |
+                select($pr.headRepository.nameWithOwner == env.EXPECTED_REPO) |
+                select(
+                  $pr.headRefName == env.BACKPORT_BRANCH or
+                  (
+                    env.SOURCE_PR_REF != "" and
+                    ($pr.headRefName | startswith(env.LEGACY_PREFIX)) and
+                    (($pr.headRefName | ltrimstr(env.LEGACY_PREFIX)) != "") and
+                    (env.SOURCE_SHA | startswith($pr.headRefName | ltrimstr(env.LEGACY_PREFIX))) and
+                    (($pr.body // "") | contains(env.SOURCE_PR_REF))
+                  )
+                )
+              ) |
+              sort_by(if .headRefName == env.BACKPORT_BRANCH then 0 else 1 end) |
+              .[0] // empty |
+              if . == "" then empty else [.number, .headRefName, .url] | @tsv end
+            ' 2>&1)"
+          rc=$?
+          echo "exit=${rc}"
+          echo "output=${out}"
+          echo "rc=${rc}" >> "$GITHUB_OUTPUT"
+
+      - name: Verdict
+        env:
+          NEW_RC: ${{ steps.new.outputs.rc }}
+          OLD_RC: ${{ steps.old.outputs.rc }}
+        run: |
+          echo "preinstalled gh rc=${NEW_RC}, downgraded gh rc=${OLD_RC}"
+          [ "$NEW_RC" = "0" ] || { echo "::error::preinstalled gh should succeed"; exit 1; }
+          [ "$OLD_RC" != "0" ] || { echo "::error::downgraded gh should fail"; exit 1; }
+          echo "confirmed: the install step is what breaks the filter"

@@ -1,0 +1,25 @@
+---
+# Mirrors the trigger shape of loft-enterprise unit-tests.yaml / golangci-lint.yaml:
+# a pull_request trigger restricted to the long-lived branches. Stacked PRs whose
+# base is another feature branch never match, so the check is never reported.
+name: Stacked PR repro (branch filter)
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+      - release-*
+
+permissions: {}
+
+jobs:
+  unit-tests:
+    name: unit-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report which base this ran for
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: echo "ran for ${HEAD_REF} -> ${BASE_REF}"

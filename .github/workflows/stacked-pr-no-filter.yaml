@@ -1,0 +1,20 @@
+---
+# Control for stacked-pr-branch-filter.yaml: same event, no branches filter.
+# This one reports on every PR in the stack, which isolates the filter as the cause.
+name: Stacked PR repro (no filter)
+
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  control-check:
+    name: control-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report which base this ran for
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: echo "ran for ${HEAD_REF} -> ${BASE_REF}"

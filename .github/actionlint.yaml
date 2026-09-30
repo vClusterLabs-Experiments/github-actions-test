@@ -1,8 +1,13 @@
-# cache-mode is supported by GitHub Actions but not yet by actionlint 1.7.x.
+# Only the two stand-in suite runs, which exercise cache-mode on purpose.
 paths:
   .github/workflows/caller-e2e-pro-run.yaml:
     ignore:
+      # Older actionlint releases have no schema for cache-mode yet.
       - 'unexpected key "cache-mode" for "workflow" section'
+      # The fork-cache-probe step is meant to be skipped. repro/fork-command
+      # checks afterwards that no cache was saved.
+      - 'cannot save caches with effective cache-mode "read"'
   .github/workflows/caller-e2e-oss-run.yaml:
     ignore:
       - 'unexpected key "cache-mode" for "workflow" section'
+      - 'cannot save caches with effective cache-mode "read"'

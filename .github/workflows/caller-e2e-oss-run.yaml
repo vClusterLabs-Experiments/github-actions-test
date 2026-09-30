@@ -51,6 +51,9 @@ on:
 
 permissions: {}
 
+# A fork run can restore caches but never save them.
+cache-mode: read
+
 concurrency:
   # Keyed by the filter, so a second `/test-e2e snapshots` supersedes the first
   # while `/test-e2e istio` runs alongside it.
@@ -66,14 +69,20 @@ jobs:
     permissions: {}
 
     steps:
+      # The workflow comes from a trusted branch, the code from the captured SHA.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.head-sha || '' }}
+          persist-credentials: false
+
       - name: Refuse to test a different commit
         if: ${{ inputs.head-sha != '' }}
         env:
           EXPECTED: ${{ inputs.head-sha }}
-          ACTUAL: ${{ github.sha }}
         run: |
+          ACTUAL="$(git rev-parse HEAD)"
           if [[ "$EXPECTED" != "$ACTUAL" ]]; then
-            echo "::error::the branch moved after the check-run was opened. It is on ${EXPECTED}, this run is on ${ACTUAL}. Comment /test-e2e again to test the new commit."
+            echo "::error::expected ${EXPECTED}, checked out ${ACTUAL}. Comment /test-e2e again."
             exit 1
           fi
           echo "testing ${ACTUAL}, which is the commit the check-run was opened on"
@@ -88,12 +97,23 @@ jobs:
           echo "oss focus: ${FOCUS}"
           echo "compose-with-pr: ${COMPOSE_WITH_PR}"
           # Long enough to observe a supersede, short enough to iterate.
-          sleep 30
+          echo "tested commit: $(git log -1 --format='%H %s')"
+          if [[ -f fork-marker.txt ]]; then echo "fork marker: $(cat fork-marker.txt)"; fi
+          sleep 90
           case "${FILTER}" in
             *oss-fail*) echo "::error::injected oss failure"; exit 1 ;;
           esac
 
       # Stands in for ginkgo-conclusion. An empty selection is neutral.
+      # Expected to be refused by cache-mode: read. Check afterwards that no
+      # cache with this key exists.
+      - name: Try to save a cache
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: fork-marker.txt
+          key: fork-cache-probe-oss-${{ github.run_id }}
+
       - name: Derive the conclusion
         id: conclusion
         if: ${{ !cancelled() }}
@@ -130,7 +150,7 @@ jobs:
 
     steps:
       - name: Complete the check-run
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@80d63f2a76ef1b6bd2e4d2e07cdd465c04594303 # github-actions#276 head until comment-triggered-check/v1 moves
         with:
           mode: finish
           check-run-id: ${{ inputs.check-run-id }}

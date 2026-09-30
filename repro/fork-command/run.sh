@@ -63,8 +63,9 @@ open_pr() {
 head_sha() { gh pr view "$1" -R "$UPSTREAM" --json headRefOid --jq .headRefOid; }
 
 # checks <sha> <name> — "conclusion" per check-run with that name, oldest first.
+# filter=all, because the API returns only the newest run per name by default.
 checks() {
-  gh api "repos/${UPSTREAM}/commits/$1/check-runs?check_name=$(jq -rn --arg n "$2" '$n|@uri')&per_page=100" \
+  gh api "repos/${UPSTREAM}/commits/$1/check-runs?check_name=$(jq -rn --arg n "$2" '$n|@uri')&filter=all&per_page=100" \
     --jq '.check_runs | sort_by(.id) | .[] | (.conclusion // .status)'
 }
 
@@ -76,7 +77,7 @@ wait_checks() {
     if (( done_count >= count )); then return 0; fi
     sleep 15
   done
-  echo "  timed out waiting for ${count} x '${name}' on ${sha:0:7}" >&2
+  fail "timed out waiting for ${count} x '${name}' on ${sha:0:7}"
   return 1
 }
 

@@ -1,0 +1,8 @@
+# cache-mode is supported by GitHub Actions but not yet by actionlint 1.7.x.
+paths:
+  .github/workflows/caller-e2e-pro-run.yaml:
+    ignore:
+      - 'unexpected key "cache-mode" for "workflow" section'
+  .github/workflows/caller-e2e-oss-run.yaml:
+    ignore:
+      - 'unexpected key "cache-mode" for "workflow" section'

@@ -11,3 +11,7 @@ paths:
     ignore:
       - 'unexpected key "cache-mode" for "workflow" section'
       - 'cannot save caches with effective cache-mode "read"'
+  .github/workflows/caller-platform-run.yaml:
+    ignore:
+      - 'unexpected key "cache-mode" for "workflow" section'
+      - 'cannot save caches with effective cache-mode "read"'

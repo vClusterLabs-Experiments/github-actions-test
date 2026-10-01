@@ -1,7 +1,7 @@
 # Fork `/test-e2e` scenarios
 
 Live checks for running `/test-e2e` on pull requests from forks (DEVOPS-1541).
-The caller workflows here mirror `vcluster-pro#2478` with stand-in suites:
+The caller workflows here mirror `vcluster-pro#2478` (two trees) and the matching loft-enterprise change (`caller-platform-*`, one tree) with stand-in suites:
 
 - Fork commands dispatch the target branch's workflow and check out the PR SHA
   captured when the comment was posted.
@@ -10,7 +10,7 @@ The caller workflows here mirror `vcluster-pro#2478` with stand-in suites:
 - The contract check runs on the workflow that will run, so a branch without
   `.github/e2e-command-contract-v2` is refused before dispatch.
 
-`caller-comment-triggered-check.yaml` and both suite runs pin
+The command callers (`caller-comment-triggered-check.yaml`, `caller-platform-command.yaml`) and their suite runs pin
 `comment-triggered-check` to the `loft-sh/github-actions#276` head. Move them
 back to `@comment-triggered-check/v1` once that tag is advanced.
 
@@ -35,7 +35,9 @@ It leaves `release-no-contract` in place for the next run.
 | 4 | Push to the fork branch after commenting | The check on the commented commit succeeds. The new commit gets none |
 | 5 | Same-repository PR | Both trees succeed |
 | 6 | Fork PR into `release-no-contract` | Both checks are `neutral` without a dispatch |
-| 7 | After the runs | No `fork-cache-probe` cache exists |
+| 7 | `/test-platform-e2e` on two fork PRs (single-check harness, mirrors loft-enterprise) | Both succeed |
+| 8 | `/test-platform-e2e` on the fork PR into `release-no-contract` | `neutral` without a dispatch |
+| 9 | After the runs | No `fork-cache-probe` cache exists |
 
 A commenter without write access is not scripted, because it needs a second
 account. Check it by hand: the command should reply with `insufficient-permission`.

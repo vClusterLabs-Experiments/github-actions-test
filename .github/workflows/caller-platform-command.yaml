@@ -18,10 +18,12 @@ jobs:
       checks: write
       pull-requests: write
     outputs:
-      should-run: ${{ steps.command.outputs.should-run }}
+      should-run: ${{ steps.command.outputs.should-run == 'true' && steps.contract.outcome == 'success' }}
       filter: ${{ steps.command.outputs.filter }}
       focus: ${{ steps.command.outputs.focus }}
+      is-fork: ${{ steps.command.outputs.is-fork }}
       head-ref: ${{ steps.command.outputs.head-ref }}
+      base-ref: ${{ steps.command.outputs.base-ref }}
       head-sha: ${{ steps.command.outputs.head-sha }}
       key: ${{ steps.command.outputs.concurrency-key }}
       check-run-id: ${{ steps.command.outputs.check-run-id }}
@@ -29,7 +31,7 @@ jobs:
     steps:
       - name: Parse command and open check
         id: command
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@80d63f2a76ef1b6bd2e4d2e07cdd465c04594303 # github-actions#276 head until comment-triggered-check/v1 moves
         with:
           mode: start
           command: /test-platform-e2e
@@ -38,9 +40,31 @@ jobs:
           comment-body: ${{ github.event.comment.body }}
           comment-author: ${{ github.event.comment.user.login }}
           author-association: ${{ github.event.comment.author_association }}
+          allow-forks: true
           pr-number: ${{ github.event.issue.number }}
           run-id: ${{ github.run_id }}
           server-url: ${{ github.server_url }}
+
+      # The contract lives on the workflow that will run: the PR head for
+      # same-repository PRs, the target branch for forks.
+      - name: Verify the branch supports command dispatch
+        id: contract
+        if: ${{ steps.command.outputs.should-run == 'true' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONTRACT_REF: ${{ steps.command.outputs.is-fork == 'true' && steps.command.outputs.base-ref || steps.command.outputs.head-sha }}
+        run: gh api "repos/${GITHUB_REPOSITORY}/contents/.github/e2e-command-contract-v2?ref=${CONTRACT_REF}" >/dev/null
+
+      - name: Close the check if the branch has no contract
+        if: ${{ always() && steps.command.outputs.should-run == 'true' && steps.contract.outcome != 'success' }}
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@80d63f2a76ef1b6bd2e4d2e07cdd465c04594303 # github-actions#276 head until comment-triggered-check/v1 moves
+        with:
+          mode: finish
+          check-run-id: ${{ steps.command.outputs.check-run-id }}
+          report-conclusion: neutral
+          summary: This branch does not support /test-platform-e2e.
+          details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Explain refusal
         if: ${{ steps.command.outputs.matched == 'true' && steps.command.outputs.should-run != 'true' }}
@@ -64,7 +88,9 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
-      HEAD_REF: ${{ needs.prepare.outputs.head-ref }}
+      # Same-repository PRs run their branch's workflow. Forks use the target
+      # branch's workflow because their branch does not exist in this repo.
+      WORKFLOW_REF: ${{ needs.prepare.outputs.is-fork == 'true' && needs.prepare.outputs.base-ref || needs.prepare.outputs.head-ref }}
       HEAD_SHA: ${{ needs.prepare.outputs.head-sha }}
       FILTER: ${{ needs.prepare.outputs.filter }}
       FOCUS: ${{ needs.prepare.outputs.focus }}
@@ -78,7 +104,7 @@ jobs:
         continue-on-error: true
         run: |
           gh workflow run caller-platform-run.yaml \
-            --ref "$HEAD_REF" \
+            --ref "$WORKFLOW_REF" \
             -f "ginkgo-label=$FILTER" \
             -f "ginkgo-focus=$FOCUS" \
             -f "head-sha=$HEAD_SHA" \
@@ -88,7 +114,7 @@ jobs:
 
       - name: Close check if dispatch failed
         if: ${{ always() && steps.dispatch.outcome == 'failure' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@80d63f2a76ef1b6bd2e4d2e07cdd465c04594303 # github-actions#276 head until comment-triggered-check/v1 moves
         with:
           mode: finish
           check-run-id: ${{ needs.prepare.outputs.check-run-id }}

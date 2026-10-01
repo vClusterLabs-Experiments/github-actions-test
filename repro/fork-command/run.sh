@@ -110,6 +110,10 @@ gh pr comment "$PR_A" -R "$UPSTREAM" --body "/test-e2e fork-repeat --target pro"
 gh pr comment "$PR_PUSH" -R "$UPSTREAM" --body "/test-e2e fork-push --target oss" >/dev/null
 gh pr comment "$PR_SAME" -R "$UPSTREAM" --body "/test-e2e same-repo" >/dev/null
 gh pr comment "$PR_OLD" -R "$UPSTREAM" --body "/test-e2e fork-old" >/dev/null
+# The single-check Platform harness, mirroring loft-enterprise.
+gh pr comment "$PR_A" -R "$UPSTREAM" --body "/test-platform-e2e platform-smoke" >/dev/null
+gh pr comment "$PR_B" -R "$UPSTREAM" --body "/test-platform-e2e platform-smoke" >/dev/null
+gh pr comment "$PR_OLD" -R "$UPSTREAM" --body "/test-platform-e2e platform-old" >/dev/null
 
 log "Pushing to the fork-push PR once its check exists"
 deadline=$((SECONDS + TIMEOUT))
@@ -148,7 +152,14 @@ log "6. Fork PR into a branch without the contract is refused before dispatch"
 wait_checks "$SHA_OLD" "e2e-pro: fork-old" 1 && expect neutral "$(checks "$SHA_OLD" "e2e-pro: fork-old")" "old-branch pro"
 wait_checks "$SHA_OLD" "e2e-oss: fork-old" 1 && expect neutral "$(checks "$SHA_OLD" "e2e-oss: fork-old")" "old-branch oss"
 
-log "7. cache-mode: read blocked every cache save"
+log "7. Platform: fork PRs run, and the same request on two PRs does not cancel"
+wait_checks "$SHA_A" "e2e-platform: platform-smoke" 1 && expect success "$(checks "$SHA_A" "e2e-platform: platform-smoke")" "platform fork A"
+wait_checks "$SHA_B" "e2e-platform: platform-smoke" 1 && expect success "$(checks "$SHA_B" "e2e-platform: platform-smoke")" "platform fork B"
+
+log "8. Platform: fork PR into a branch without the contract is refused"
+wait_checks "$SHA_OLD" "e2e-platform: platform-old" 1 && expect neutral "$(checks "$SHA_OLD" "e2e-platform: platform-old")" "platform old branch"
+
+log "9. cache-mode: read blocked every cache save"
 expect 0 "$(gh api "repos/${UPSTREAM}/actions/caches?key=fork-cache-probe" --jq .total_count)" "fork-cache-probe caches"
 
 log "Done: ${FAILED} failed"

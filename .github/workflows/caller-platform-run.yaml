@@ -104,7 +104,7 @@ jobs:
       checks: write
     steps:
       - name: Complete check
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@80d63f2a76ef1b6bd2e4d2e07cdd465c04594303 # github-actions#276 head until comment-triggered-check/v1 moves
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
         with:
           mode: finish
           check-run-id: ${{ inputs.check-run-id }}

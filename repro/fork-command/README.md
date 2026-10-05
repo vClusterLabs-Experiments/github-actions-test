@@ -10,9 +10,7 @@ The caller workflows here mirror `vcluster-pro#2478` (two trees) and the matchin
 - The contract check runs on the workflow that will run, so a branch without
   `.github/e2e-command-contract-v2` is refused before dispatch.
 
-The command callers (`caller-comment-triggered-check.yaml`, `caller-platform-command.yaml`) and their suite runs pin
-`comment-triggered-check` to the `loft-sh/github-actions#276` head. Move them
-back to `@comment-triggered-check/v1` once that tag is advanced.
+The command callers and their suite runs use `comment-triggered-check@comment-triggered-check/v1`, so a run tests the released action.
 
 ## Run
 

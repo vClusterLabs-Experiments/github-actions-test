@@ -31,7 +31,7 @@ jobs:
     steps:
       - name: Parse command and open check
         id: command
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@80d63f2a76ef1b6bd2e4d2e07cdd465c04594303 # github-actions#276 head until comment-triggered-check/v1 moves
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
         with:
           mode: start
           command: /test-platform-e2e
@@ -58,7 +58,7 @@ jobs:
 
       - name: Close the check if the branch has no contract
         if: ${{ always() && steps.command.outputs.should-run == 'true' && steps.contract.outcome != 'success' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@80d63f2a76ef1b6bd2e4d2e07cdd465c04594303 # github-actions#276 head until comment-triggered-check/v1 moves
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
         with:
           mode: finish
           check-run-id: ${{ steps.command.outputs.check-run-id }}
@@ -114,7 +114,7 @@ jobs:
 
       - name: Close check if dispatch failed
         if: ${{ always() && steps.dispatch.outcome == 'failure' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@80d63f2a76ef1b6bd2e4d2e07cdd465c04594303 # github-actions#276 head until comment-triggered-check/v1 moves
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
         with:
           mode: finish
           check-run-id: ${{ needs.prepare.outputs.check-run-id }}

@@ -15,6 +15,11 @@ name: E2E oss run
 # so a green job is not evidence anything ran, and QA asked for that to fail
 # rather than sit grey (DEVOPS-1333).
 
+# Command runs start from the target branch, so their jobs show up on that
+# branch's latest commit. Name them after the request so nobody mistakes them
+# for a run of that commit.
+run-name: "${{ inputs.check-run-id != '' && format('E2E command: {0}', inputs.concurrency-key) || '' }}"
+
 on:
   workflow_dispatch:
     inputs:

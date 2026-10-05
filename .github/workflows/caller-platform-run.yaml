@@ -1,5 +1,9 @@
 name: Platform command mock run
 
+# Command runs start from the target branch, so their jobs show up on that
+# branch's latest commit. Name them after the pull request.
+run-name: "${{ inputs.check-run-id != '' && format('E2E for PR #{0} ({1})', inputs.pr-number, inputs.ginkgo-label) || '' }}"
+
 on:
   workflow_dispatch:
     inputs:

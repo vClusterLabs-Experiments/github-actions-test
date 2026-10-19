@@ -1,0 +1,111 @@
+name: Demo command
+
+# Minimal example of a PR comment command built on comment-triggered-check.
+# Copy this file and demo-suite.yaml to add a command to another repository.
+#
+#   /demo-e2e ok        the check passes
+#   /demo-e2e fail      the check fails
+#   /demo-e2e nothing   the check ends as "Nothing to run"
+#
+# issue_comment runs this file from the default branch, with secrets, for every
+# comment. So this workflow never checks out PR code. It only parses the
+# command, opens a check on the PR's head commit and starts demo-suite.yaml.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  prepare:
+    name: Parse command
+    # Cheap pre-filter; the action does the real parsing.
+    if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, '/demo-e2e') }}
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      pull-requests: write
+    outputs:
+      should-run: ${{ steps.command.outputs.should-run }}
+      filter: ${{ steps.command.outputs.filter }}
+      is-fork: ${{ steps.command.outputs.is-fork }}
+      head-ref: ${{ steps.command.outputs.head-ref }}
+      base-ref: ${{ steps.command.outputs.base-ref }}
+      head-sha: ${{ steps.command.outputs.head-sha }}
+      key: ${{ steps.command.outputs.concurrency-key }}
+      check-run-id: ${{ steps.command.outputs.check-run-id }}
+    steps:
+      # Parses the comment, checks the author, finds the head commit and opens
+      # the check on it.
+      - name: Parse command and open check
+        id: command
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        with:
+          mode: start
+          command: /demo-e2e
+          check-name-prefix: demo-e2e
+          finish-workflow: demo-suite.yaml
+          comment-body: ${{ github.event.comment.body }}
+          comment-author: ${{ github.event.comment.user.login }}
+          author-association: ${{ github.event.comment.author_association }}
+          pr-number: ${{ github.event.issue.number }}
+          run-id: ${{ github.run_id }}
+          server-url: ${{ github.server_url }}
+          # Fork PRs: safe only because demo-suite.yaml checks out head-sha
+          # and only reads the cache.
+          # allow-forks: true
+          # Give the check its own group on the PR (also pass to finish).
+          # app-client-id: ${{ vars.CI_APP_CLIENT_ID }}
+          # app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
+      # A typo or a missing permission gets a reply instead of a run.
+      - name: Explain refusal
+        if: ${{ steps.command.outputs.matched == 'true' && steps.command.outputs.should-run != 'true' && steps.command.outputs.reason-title != '' }}
+        uses: loft-sh/github-actions/.github/actions/sticky-pr-comment@sticky-pr-comment/v1
+        with:
+          pr-number: ${{ github.event.issue.number }}
+          marker: '<!-- demo-e2e-refusal -->'
+          body: |
+            **${{ steps.command.outputs.reason-title }}**
+
+            ${{ steps.command.outputs.reason-guidance }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  dispatch:
+    name: Start suite
+    needs: [prepare]
+    if: ${{ needs.prepare.outputs.should-run == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      checks: write
+    steps:
+      # Same-repo PRs run their own branch's suite. Forks run the target
+      # branch's suite, because a fork's workflow files are not trusted.
+      - name: Dispatch demo-suite.yaml
+        id: dispatch
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          WORKFLOW_REF: ${{ needs.prepare.outputs.is-fork == 'true' && needs.prepare.outputs.base-ref || needs.prepare.outputs.head-ref }}
+          FILTER: ${{ needs.prepare.outputs.filter }}
+          HEAD_SHA: ${{ needs.prepare.outputs.head-sha }}
+          KEY: ${{ needs.prepare.outputs.key }}
+          CHECK_RUN_ID: ${{ needs.prepare.outputs.check-run-id }}
+        run: |
+          gh workflow run demo-suite.yaml --ref "$WORKFLOW_REF" \
+            -f "filter=$FILTER" -f "head-sha=$HEAD_SHA" \
+            -f "concurrency-key=$KEY" -f "check-run-id=$CHECK_RUN_ID"
+
+      # Never leave a check spinning: if the suite could not start, close it.
+      - name: Close the check if the suite did not start
+        if: ${{ steps.dispatch.outcome == 'failure' }}
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        with:
+          mode: finish
+          check-run-id: ${{ needs.prepare.outputs.check-run-id }}
+          suite-result: failure
+          summary: Could not start demo-suite.yaml. Update the branch from its target and comment again.
+          details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

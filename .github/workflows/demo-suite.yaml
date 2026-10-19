@@ -1,0 +1,94 @@
+name: Demo suite
+
+# The non-privileged half of demo-command.yaml. It runs the requested tests
+# against the exact commit the check was opened on, then closes the check.
+run-name: "demo-e2e: ${{ inputs.filter }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: Filter from the comment.
+        required: true
+        type: string
+      head-sha:
+        description: Commit the check was opened on.
+        required: true
+        type: string
+      concurrency-key:
+        description: Request identity from the action.
+        required: true
+        type: string
+      check-run-id:
+        description: Check to close when the suite ends.
+        required: true
+        type: string
+
+permissions: {}
+
+# A fork run can restore caches but never save them.
+cache-mode: read
+
+jobs:
+  suite:
+    name: Run suite
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # The same request again on the same PR replaces the older run.
+    concurrency:
+      group: demo-suite-${{ inputs.concurrency-key }}
+      cancel-in-progress: true
+    outputs:
+      check-conclusion: ${{ steps.result.outputs.check-conclusion }}
+    steps:
+      # The workflow comes from a trusted branch; the code comes from head-sha.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.head-sha }}
+          persist-credentials: false
+
+      - name: Verify the requested commit
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.head-sha }}
+        run: |
+          ACTUAL_HEAD_SHA="$(git rev-parse HEAD)"
+          if [[ "$EXPECTED_HEAD_SHA" != "$ACTUAL_HEAD_SHA" ]]; then
+            echo "::error::expected ${EXPECTED_HEAD_SHA}, checked out ${ACTUAL_HEAD_SHA}. Comment again."
+            exit 1
+          fi
+          echo "testing ${ACTUAL_HEAD_SHA}"
+
+      # Stand-in for the real tests (Ginkgo, go test, ...). It must report one
+      # of success, failure, neutral or timed_out.
+      - name: Run tests
+        id: result
+        env:
+          FILTER: ${{ inputs.filter }}
+        run: |
+          echo "running tests matching: ${FILTER}"
+          sleep 20
+          case "$FILTER" in
+            *fail*) echo "check-conclusion=failure" >> "$GITHUB_OUTPUT" ;;
+            *nothing*) echo "check-conclusion=neutral" >> "$GITHUB_OUTPUT" ;;
+            *) echo "check-conclusion=success" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  # Runs even when the suite fails or is cancelled, so the check always closes.
+  finish:
+    name: Close check
+    needs: [suite]
+    if: ${{ always() && inputs.check-run-id != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+    steps:
+      - uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        with:
+          mode: finish
+          check-run-id: ${{ inputs.check-run-id }}
+          report-conclusion: ${{ needs.suite.result != 'cancelled' && needs.suite.outputs.check-conclusion || '' }}
+          suite-result: ${{ needs.suite.result }}
+          details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # app-client-id: ${{ vars.CI_APP_CLIENT_ID }}
+          # app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}

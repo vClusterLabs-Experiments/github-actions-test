@@ -24,6 +24,19 @@ This repo contains caller workflows that exercise each reusable workflow from
 | `caller-secret-broker-request.yaml` | creates and queues a short-lived broker request |
 | `caller-secret-broker-response.yaml` | `secret-broker-request` action |
 
+## Demo command
+
+`demo-command.yaml` and `demo-suite.yaml` are a minimal, commented example of a
+PR comment command built on `comment-triggered-check`. Copy both to add a
+command to another repository. Comment on any PR here:
+
+| Comment | Check result |
+|---------|--------------|
+| `/demo-e2e ok` | passes |
+| `/demo-e2e fail` | fails |
+| `/demo-e2e nothing` | "Nothing to run" |
+| `/demo-e2e (ok` | no check; a reply explains the unbalanced parenthesis |
+
 ## Integration test orchestrator
 
 `integration-tests.yaml` runs all E2E tests in parallel, creating real PRs,

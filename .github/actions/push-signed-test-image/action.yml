@@ -1,0 +1,44 @@
+name: Push signed test image
+description: Build a tiny multi-arch image, push it, sign it with cosign and attest its provenance, like a head workflow does
+inputs:
+  image:
+    description: Image without a tag
+    required: true
+  tag:
+    description: Tag to push
+    required: true
+outputs:
+  digest:
+    description: Digest of the pushed image index
+    value: ${{ steps.build.outputs.digest }}
+runs:
+  using: composite
+  steps:
+    - name: Write a unique marker
+      shell: bash
+      env:
+        MARKER: ${{ inputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}
+      run: echo "${MARKER}" > test-fixtures/delete-previous-head-image/marker
+
+    - name: Build and push
+      id: build
+      uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+      with:
+        context: test-fixtures/delete-previous-head-image
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ inputs.image }}:${{ inputs.tag }}
+
+    - name: Sign
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        DIGEST: ${{ steps.build.outputs.digest }}
+      run: cosign sign --yes "${IMAGE}@${DIGEST}"
+
+    - name: Attest build provenance
+      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+      with:
+        subject-name: ${{ inputs.image }}
+        subject-digest: ${{ steps.build.outputs.digest }}
+        push-to-registry: true

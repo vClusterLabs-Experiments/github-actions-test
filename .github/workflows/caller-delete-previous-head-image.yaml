@@ -1,0 +1,129 @@
+name: Delete previous head image (real delete)
+
+# Integration test for loft-sh/github-actions delete-previous-head-image with a
+# real delete, against a throwaway package, before any production repo uses it.
+#
+# It pushes a signed release and two signed head images, then deletes the first
+# head image with the job's GITHUB_TOKEN and checks that:
+#   - every version of the first head image is gone
+#   - head and the release still pull on both platforms and pass cosign verify
+#   - running delete again with the same digest is a no-op
+#
+# TODO: pin to delete-previous-head-image/v1 once loft-sh/github-actions#347 is
+# merged and tagged. The SHA is that pull request's head.
+
+on:
+  push:
+    branches:
+      - devops-1807/**
+    paths:
+      - .github/workflows/caller-delete-previous-head-image.yaml
+      - .github/actions/push-signed-test-image/**
+      - test-fixtures/delete-previous-head-image/**
+  workflow_dispatch:
+
+concurrency:
+  group: delete-previous-head-image
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  IMAGE: ghcr.io/vclusterlabs-experiments/delete-previous-head-image-test
+  COSIGN_IDENTITY: ^https://github.com/vClusterLabs-Experiments/github-actions-test/\.github/workflows/caller-delete-previous-head-image\.yaml@
+
+jobs:
+  real-delete:
+    name: Delete the previous head image for real
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push, and delete versions of the package this repo publishes
+      id-token: write # cosign keyless signing and provenance
+      attestations: write # provenance attestation
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        with:
+          cosign-release: "v3.0.6"
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+
+      - name: Push a signed release
+        uses: ./.github/actions/push-signed-test-image
+        with:
+          image: ${{ env.IMAGE }}
+          tag: v0.0.1
+
+      - name: Push the first head image
+        id: first
+        uses: ./.github/actions/push-signed-test-image
+        with:
+          image: ${{ env.IMAGE }}
+          tag: head
+
+      - name: Record the current head image
+        id: previous-head
+        uses: loft-sh/github-actions/.github/actions/delete-previous-head-image@ecd67a385c242fe7729633facf463f461eb287df # delete-previous-head-image/v1 (loft-sh/github-actions#347)
+        with:
+          mode: record
+          image: ${{ env.IMAGE }}
+
+      - name: Check record returned the first head image
+        env:
+          RECORDED: ${{ steps.previous-head.outputs.digest }}
+          PUSHED: ${{ steps.first.outputs.digest }}
+        run: test "${RECORDED}" = "${PUSHED}"
+
+      - name: Snapshot the first head image
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PREVIOUS: ${{ steps.previous-head.outputs.digest }}
+        run: bash test-fixtures/delete-previous-head-image/check.sh snapshot "${PREVIOUS}" | tee "${RUNNER_TEMP}/previous.txt"
+
+      - name: Push the second head image
+        id: second
+        uses: ./.github/actions/push-signed-test-image
+        with:
+          image: ${{ env.IMAGE }}
+          tag: head
+
+      - name: Delete the previous head image
+        uses: loft-sh/github-actions/.github/actions/delete-previous-head-image@ecd67a385c242fe7729633facf463f461eb287df # delete-previous-head-image/v1 (loft-sh/github-actions#347)
+        with:
+          mode: delete
+          image: ${{ env.IMAGE }}
+          previous-digest: ${{ steps.previous-head.outputs.digest }}
+          current-digest: ${{ steps.second.outputs.digest }}
+
+      - name: Check every version of the first head image is gone
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash test-fixtures/delete-previous-head-image/check.sh gone "${RUNNER_TEMP}/previous.txt"
+
+      - name: Check head still pulls and verifies
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash test-fixtures/delete-previous-head-image/check.sh intact head
+
+      - name: Check the release still pulls and verifies
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash test-fixtures/delete-previous-head-image/check.sh intact v0.0.1
+
+      - name: Delete again with the same digest
+        uses: loft-sh/github-actions/.github/actions/delete-previous-head-image@ecd67a385c242fe7729633facf463f461eb287df # delete-previous-head-image/v1 (loft-sh/github-actions#347)
+        with:
+          mode: delete
+          image: ${{ env.IMAGE }}
+          previous-digest: ${{ steps.previous-head.outputs.digest }}
+          current-digest: ${{ steps.second.outputs.digest }}

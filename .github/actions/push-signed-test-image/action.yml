@@ -7,6 +7,9 @@ inputs:
   tag:
     description: Tag to push
     required: true
+  variant:
+    description: Written into the image, so two pushes to the same tag differ
+    required: true
 outputs:
   digest:
     description: Digest of the pushed image index
@@ -17,7 +20,7 @@ runs:
     - name: Write a unique marker
       shell: bash
       env:
-        MARKER: ${{ inputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}
+        MARKER: ${{ inputs.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
       run: echo "${MARKER}" > test-fixtures/delete-previous-head-image/marker
 
     - name: Build and push

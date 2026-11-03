@@ -63,6 +63,7 @@ jobs:
         with:
           image: ${{ env.IMAGE }}
           tag: v0.0.1
+          variant: release
 
       - name: Push the first head image
         id: first
@@ -70,6 +71,7 @@ jobs:
         with:
           image: ${{ env.IMAGE }}
           tag: head
+          variant: first-head
 
       - name: Record the current head image
         id: previous-head
@@ -96,6 +98,7 @@ jobs:
         with:
           image: ${{ env.IMAGE }}
           tag: head
+          variant: second-head
 
       - name: Delete the previous head image
         uses: loft-sh/github-actions/.github/actions/delete-previous-head-image@ecd67a385c242fe7729633facf463f461eb287df # delete-previous-head-image/v1 (loft-sh/github-actions#347)

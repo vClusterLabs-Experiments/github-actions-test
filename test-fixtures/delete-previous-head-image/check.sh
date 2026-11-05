@@ -3,6 +3,10 @@
 #   check.sh snapshot <digest>   print every manifest digest that belongs to one image
 #   check.sh gone <file>         fail unless every digest in <file> is gone
 #   check.sh intact <tag>        fail unless <tag> pulls on both platforms and verifies
+#   check.sh digest <ref>        print the digest <ref> points to
+#   check.sh platform <tag> <arch>   print the linux/<arch> manifest digest of <tag>
+#   check.sh shared <old> <platform> fail unless <old> and its signatures are gone while
+#                                <platform> and its signatures remain and verify
 set -euo pipefail
 
 image="${IMAGE:?IMAGE is required, such as ghcr.io/<org>/<name>}"
@@ -75,9 +79,38 @@ intact() {
   echo "cosign verify passed for ${image}:${tag} (${d})"
 }
 
+platform() {
+  manifest "$1" | jq -r --arg arch "$2" \
+    '.manifests[] | select(.platform.os == "linux" and .platform.architecture == $arch) | .digest'
+}
+
+shared() {
+  local old="$1" platform="$2" failed=0 ref
+  for ref in "${old}" "${old/:/-}"; do
+    if [[ "$(status "${ref}")" != 404 ]]; then
+      echo "::error::${ref} from the previous head still exists"
+      failed=1
+    fi
+  done
+  for ref in "${platform}" "${platform/:/-}"; do
+    if [[ "$(status "${ref}")" != 200 ]]; then
+      echo "::error::${ref}, shared with the release, is gone"
+      failed=1
+    fi
+  done
+  [[ "${failed}" == 0 ]] || return 1
+  cosign verify "${image}@${platform}" \
+    --certificate-identity-regexp "${COSIGN_IDENTITY:?}" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
+  echo "previous head and its signature are gone; shared ${platform} and its signature remain and verify"
+}
+
 case "${1:-}" in
   snapshot) snapshot "${2:?digest}" ;;
   gone) gone "${2:?file}" ;;
   intact) intact "${2:?tag}" ;;
-  *) echo "usage: check.sh snapshot|gone|intact <arg>" >&2; exit 2 ;;
+  digest) digest "${2:?ref}" ;;
+  platform) platform "${2:?tag}" "${3:?arch}" ;;
+  shared) shared "${2:?old digest}" "${3:?platform digest}" ;;
+  *) echo "usage: check.sh snapshot|gone|intact|digest|platform|shared <args>" >&2; exit 2 ;;
 esac

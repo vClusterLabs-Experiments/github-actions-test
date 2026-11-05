@@ -9,8 +9,8 @@ name: Delete previous head image (real delete)
 #   - head and the release still pull on both platforms and pass cosign verify
 #   - running delete again with the same digest is a no-op
 #
-# TODO: pin to delete-previous-head-image/v1 once loft-sh/github-actions#347 is
-# merged and tagged. The SHA is that pull request's head.
+# A second job covers an old head that shares a platform manifest with a release
+# that signs each platform: the shared manifest and its signature must stay.
 
 on:
   push:
@@ -130,3 +130,103 @@ jobs:
           image: ${{ env.IMAGE }}
           previous-digest: ${{ steps.previous-head.outputs.digest }}
           current-digest: ${{ steps.second.outputs.digest }}
+
+  shared-platform:
+    name: Keep the signature of a platform shared with a release
+    needs: real-delete
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push, and delete versions of the package this repo publishes
+      id-token: write # cosign keyless signing and provenance
+      attestations: write # provenance attestation
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        with:
+          cosign-release: "v3.0.6"
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+
+      - name: Push a signed release
+        uses: ./.github/actions/push-signed-test-image
+        with:
+          image: ${{ env.IMAGE }}
+          tag: v0.0.2
+          variant: shared-release
+
+      - name: Sign the release's amd64 manifest on its own
+        id: platform
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          amd64="$(bash test-fixtures/delete-previous-head-image/check.sh platform v0.0.2 amd64)"
+          test -n "${amd64}"
+          cosign sign --yes "${IMAGE}@${amd64}"
+          echo "digest=${amd64}" >> "${GITHUB_OUTPUT}"
+
+      - name: Push a signed head image that reuses the release's amd64 manifest
+        id: old-head
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AMD64: ${{ steps.platform.outputs.digest }}
+        run: |
+          docker buildx imagetools create --tag "${IMAGE}:shared-head" \
+            --annotation "index:org.opencontainers.image.description=shared-head-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            "${IMAGE}@${AMD64}"
+          digest="$(bash test-fixtures/delete-previous-head-image/check.sh digest shared-head)"
+          test -n "${digest}"
+          cosign sign --yes "${IMAGE}@${digest}"
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Record the current head image
+        id: previous-head
+        uses: loft-sh/github-actions/.github/actions/delete-previous-head-image@delete-previous-head-image/v1
+        with:
+          mode: record
+          image: ${{ env.IMAGE }}
+          tag: shared-head
+
+      - name: Check record returned the old head image
+        env:
+          RECORDED: ${{ steps.previous-head.outputs.digest }}
+          PUSHED: ${{ steps.old-head.outputs.digest }}
+        run: test "${RECORDED}" = "${PUSHED}"
+
+      - name: Push the new head image
+        id: new-head
+        uses: ./.github/actions/push-signed-test-image
+        with:
+          image: ${{ env.IMAGE }}
+          tag: shared-head
+          variant: shared-new-head
+
+      - name: Delete the previous head image
+        uses: loft-sh/github-actions/.github/actions/delete-previous-head-image@delete-previous-head-image/v1
+        with:
+          mode: delete
+          image: ${{ env.IMAGE }}
+          tag: shared-head
+          previous-digest: ${{ steps.previous-head.outputs.digest }}
+          current-digest: ${{ steps.new-head.outputs.digest }}
+
+      - name: Check the shared manifest kept its signature
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OLD: ${{ steps.previous-head.outputs.digest }}
+          AMD64: ${{ steps.platform.outputs.digest }}
+        run: bash test-fixtures/delete-previous-head-image/check.sh shared "${OLD}" "${AMD64}"
+
+      - name: Check the release still pulls and verifies
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash test-fixtures/delete-previous-head-image/check.sh intact v0.0.2

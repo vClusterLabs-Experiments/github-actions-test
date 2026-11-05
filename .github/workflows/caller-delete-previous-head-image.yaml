@@ -75,7 +75,7 @@ jobs:
 
       - name: Record the current head image
         id: previous-head
-        uses: loft-sh/github-actions/.github/actions/delete-previous-head-image@ecd67a385c242fe7729633facf463f461eb287df # delete-previous-head-image/v1 (loft-sh/github-actions#347)
+        uses: loft-sh/github-actions/.github/actions/delete-previous-head-image@delete-previous-head-image/v1
         with:
           mode: record
           image: ${{ env.IMAGE }}
@@ -101,7 +101,7 @@ jobs:
           variant: second-head
 
       - name: Delete the previous head image
-        uses: loft-sh/github-actions/.github/actions/delete-previous-head-image@ecd67a385c242fe7729633facf463f461eb287df # delete-previous-head-image/v1 (loft-sh/github-actions#347)
+        uses: loft-sh/github-actions/.github/actions/delete-previous-head-image@delete-previous-head-image/v1
         with:
           mode: delete
           image: ${{ env.IMAGE }}
@@ -124,7 +124,7 @@ jobs:
         run: bash test-fixtures/delete-previous-head-image/check.sh intact v0.0.1
 
       - name: Delete again with the same digest
-        uses: loft-sh/github-actions/.github/actions/delete-previous-head-image@ecd67a385c242fe7729633facf463f461eb287df # delete-previous-head-image/v1 (loft-sh/github-actions#347)
+        uses: loft-sh/github-actions/.github/actions/delete-previous-head-image@delete-previous-head-image/v1
         with:
           mode: delete
           image: ${{ env.IMAGE }}

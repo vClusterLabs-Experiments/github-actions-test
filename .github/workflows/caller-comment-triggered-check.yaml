@@ -66,13 +66,16 @@ jobs:
       # DEFINITION from the pull request and run it with this token.
       - name: Parse the command and open the pro check
         id: pro
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@devops-1843/test-e2e-run-reply
         with:
           mode: start
           command: /test-e2e
           check-name-prefix: e2e-pro
           parse-focus: true
           target-name: pro
+          reply: "true"
+          comment-id: ${{ github.event.comment.id }}
+          run-label: Pro
           comment-body: ${{ github.event.comment.body }}
           comment-author: ${{ github.event.comment.user.login }}
           author-association: ${{ github.event.comment.author_association }}
@@ -84,13 +87,16 @@ jobs:
       - name: Open the oss check
         id: oss
         if: ${{ steps.pro.outputs.target == 'oss' || (steps.pro.outputs.target == '' && steps.pro.outputs.should-run == 'true') }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@devops-1843/test-e2e-run-reply
         with:
           mode: start
           command: /test-e2e
           check-name-prefix: e2e-oss
           parse-focus: true
           target-name: oss
+          reply: "true"
+          comment-id: ${{ github.event.comment.id }}
+          run-label: OSS
           comment-body: ${{ github.event.comment.body }}
           comment-author: ${{ github.event.comment.user.login }}
           author-association: ${{ github.event.comment.author_association }}
@@ -135,7 +141,7 @@ jobs:
 
       - name: Close the pro check if the branch has no contract
         if: ${{ always() && steps.pro.outputs.should-run == 'true' && steps.contract.outcome != 'success' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@devops-1843/test-e2e-run-reply
         with:
           mode: finish
           check-run-id: ${{ steps.pro.outputs.check-run-id }}
@@ -145,7 +151,7 @@ jobs:
 
       - name: Close the oss check if the branch has no contract
         if: ${{ always() && steps.oss.outputs.should-run == 'true' && steps.contract.outcome != 'success' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@devops-1843/test-e2e-run-reply
         with:
           mode: finish
           check-run-id: ${{ steps.oss.outputs.check-run-id }}
@@ -155,7 +161,7 @@ jobs:
 
       - name: Close whatever was opened if preparing failed
         if: failure()
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@devops-1843/test-e2e-run-reply
         with:
           mode: finish
           check-run-id: ${{ steps.pro.outputs.check-run-id }}
@@ -262,14 +268,26 @@ jobs:
         env:
           CHECK_RUN_ID: ${{ needs.prepare.outputs.pro-check-run-id }}
         run: |
-          gh workflow run caller-e2e-pro-run.yaml \
+          output="$(gh workflow run caller-e2e-pro-run.yaml \
             --ref "$WORKFLOW_REF" \
             -f "ginkgo-label=$FILTER" \
             -f "ginkgo-focus=$FOCUS" \
             -f "head-sha=$HEAD_SHA" \
             -f "compose-with-pr=false" \
             -f "concurrency-key=$KEY" \
-            -f "check-run-id=$CHECK_RUN_ID"
+            -f "check-run-id=$CHECK_RUN_ID" 2>&1)" || { echo "$output"; exit 1; }
+          echo "$output"
+          # gh prints the URL of the run it started.
+          url="$(grep -Eo 'https://[^[:space:]]+/actions/runs/[0-9]+' <<< "$output" | head -n1 || true)"
+          echo "url=${url}" >> "$GITHUB_OUTPUT"
+
+      - name: Link the pro run in the reply
+        if: ${{ steps.dispatch-pro.outputs.url != '' }}
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@devops-1843/test-e2e-run-reply
+        with:
+          mode: link
+          check-run-id: ${{ needs.prepare.outputs.pro-check-run-id }}
+          run-url: ${{ steps.dispatch-pro.outputs.url }}
 
       - name: Run the oss suite
         id: dispatch-oss
@@ -278,40 +296,30 @@ jobs:
         env:
           CHECK_RUN_ID: ${{ needs.prepare.outputs.oss-check-run-id }}
         run: |
-          gh workflow run caller-e2e-oss-run.yaml \
+          output="$(gh workflow run caller-e2e-oss-run.yaml \
             --ref "$WORKFLOW_REF" \
             -f "ginkgo-label=$FILTER" \
             -f "ginkgo-focus=$FOCUS" \
             -f "head-sha=$HEAD_SHA" \
             -f "compose-with-pr=false" \
             -f "concurrency-key=$KEY" \
-            -f "check-run-id=$CHECK_RUN_ID"
+            -f "check-run-id=$CHECK_RUN_ID" 2>&1)" || { echo "$output"; exit 1; }
+          echo "$output"
+          # gh prints the URL of the run it started.
+          url="$(grep -Eo 'https://[^[:space:]]+/actions/runs/[0-9]+' <<< "$output" | head -n1 || true)"
+          echo "url=${url}" >> "$GITHUB_OUTPUT"
 
-      - name: Say what it picked
-        if: always()
-        uses: loft-sh/github-actions/.github/actions/sticky-pr-comment@ee112eee4fb449b7b1e78f63fdec314563be534d # sticky-pr-comment/v1
+      - name: Link the oss run in the reply
+        if: ${{ steps.dispatch-oss.outputs.url != '' }}
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@devops-1843/test-e2e-run-reply
         with:
-          # Required here. The input defaults to github.event.pull_request.number,
-          # which is empty on issue_comment, and the action then refuses.
-          pr-number: ${{ github.event.issue.number }}
-          marker: '<!-- e2e-command-status -->'
-          body: |
-            ### `/test-e2e` started
-
-            Target: `${{ needs.prepare.outputs.target != '' && needs.prepare.outputs.target || 'pro + oss' }}`
-
-            - **Pro:** ${{ needs.prepare.outputs.target == 'oss' && 'Not requested' || steps.dispatch-pro.outcome == 'success' && 'Started' || 'Failed to start' }}
-            - **OSS:** ${{ needs.prepare.outputs.target == 'pro' && 'Not requested' || steps.dispatch-oss.outcome == 'success' && 'Started' || 'Failed to start' }}
-
-            Filter: `${{ needs.prepare.outputs.filter }}`
-            ${{ needs.prepare.outputs.focus != '' && format('Focus: `{0}`', needs.prepare.outputs.focus) || '' }}
-
-            If no specs match in a selected tree, its check reports **Nothing to run**.
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode: link
+          check-run-id: ${{ needs.prepare.outputs.oss-check-run-id }}
+          run-url: ${{ steps.dispatch-oss.outputs.url }}
 
       - name: Close the pro check if its dispatch failed
         if: ${{ steps.dispatch-pro.outcome == 'failure' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@devops-1843/test-e2e-run-reply
         with:
           mode: finish
           check-run-id: ${{ needs.prepare.outputs.pro-check-run-id }}
@@ -321,7 +329,7 @@ jobs:
 
       - name: Close the oss check if its dispatch failed
         if: ${{ steps.dispatch-oss.outcome == 'failure' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@devops-1843/test-e2e-run-reply
         with:
           mode: finish
           check-run-id: ${{ needs.prepare.outputs.oss-check-run-id }}

@@ -106,9 +106,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       checks: write
+      # Redraws the command's reply.
+      pull-requests: write
     steps:
       - name: Complete check
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@devops-1843/test-e2e-run-reply
         with:
           mode: finish
           check-run-id: ${{ inputs.check-run-id }}

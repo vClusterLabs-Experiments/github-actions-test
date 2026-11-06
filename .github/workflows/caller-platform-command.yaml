@@ -32,7 +32,7 @@ jobs:
     steps:
       - name: Parse command and open check
         id: command
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@devops-1843/test-e2e-run-reply
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
         with:
           mode: start
           command: /test-platform-e2e
@@ -63,7 +63,7 @@ jobs:
 
       - name: Close the check if the branch has no contract
         if: ${{ always() && steps.command.outputs.should-run == 'true' && steps.contract.outcome != 'success' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@devops-1843/test-e2e-run-reply
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
         with:
           mode: finish
           check-run-id: ${{ steps.command.outputs.check-run-id }}
@@ -128,7 +128,7 @@ jobs:
 
       - name: Link the run in the reply
         if: ${{ steps.dispatch.outputs.url != '' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@devops-1843/test-e2e-run-reply
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
         with:
           mode: link
           check-run-id: ${{ matrix.run.check-run-id }}
@@ -136,7 +136,7 @@ jobs:
 
       - name: Close check if dispatch failed
         if: ${{ always() && steps.dispatch.outcome == 'failure' }}
-        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@devops-1843/test-e2e-run-reply
+        uses: loft-sh/github-actions/.github/actions/comment-triggered-check@comment-triggered-check/v1
         with:
           mode: finish
           check-run-id: ${{ matrix.run.check-run-id }}

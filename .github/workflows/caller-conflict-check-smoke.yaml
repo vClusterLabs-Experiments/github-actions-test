@@ -1,0 +1,37 @@
+# Throwaway smoke test for loft-sh/github-actions#382 (DEVOPS-1739). Not for merge.
+name: conflict-check smoke
+
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  other-bot:
+    name: Post another bot's sticky comment
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Resolve the comment author
+        id: author
+        env:
+          GH_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
+        run: |
+          login=$(gh api user --jq .login)
+          echo "login=$login" >> "$GITHUB_OUTPUT"
+      - uses: loft-sh/github-actions/.github/actions/sticky-pr-comment@sticky-pr-comment/v1 # zizmor: ignore[unpinned-uses] -- throwaway smoke test
+        with:
+          marker: '<!-- smoke-other-bot -->'
+          body: 'Stands in for backport-fix-imports. conflict-check must never edit this comment.'
+          github-token: ${{ secrets.GH_ACCESS_TOKEN }}
+          expected-author: ${{ steps.author.outputs.login }}
+
+  conflict-check:
+    needs: other-bot
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: loft-sh/github-actions/.github/workflows/conflict-check.yaml@conflict-check/v1 # zizmor: ignore[unpinned-uses] -- throwaway smoke test
+    secrets:
+      gh-access-token: ${{ secrets.GH_ACCESS_TOKEN }}
